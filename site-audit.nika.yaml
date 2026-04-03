@@ -11,6 +11,10 @@ artifacts:
 skills:
   seo: ./skills/seo-auditor.md
 
+context:
+  files:
+    dashboard_template: ./templates/dashboard.html
+
 inputs:
   url: "https://htmx.org"
 
@@ -636,47 +640,77 @@ tasks:
       format: markdown
 
   # Generate dashboard data (TREE + GRAPH JS variables)
-  - id: html_dashboard
-    description: "Generate self-contained HTML dashboard"
-    depends_on: [pages_by_locale, enriched_pages, broken_pages, soft_404_pages, stats]
+  # Dashboard step 1: LLM generates ONLY the data (TREE + GRAPH JS objects)
+  - id: dashboard_data
+    description: "Generate treemap + graph data objects for dashboard template"
+    depends_on: [pages_by_locale, enriched_pages, broken_pages, soft_404_pages]
     with:
       by_locale: $pages_by_locale
       pages: $enriched_pages
       broken: $broken_pages
       soft_404: $soft_404_pages
-      stats: $stats
     infer:
       prompt: |
-        Generate a COMPLETE self-contained HTML dashboard file for a site audit.
+        Generate TWO JavaScript variable assignments for a site audit dashboard.
 
-        SITE DATA:
-        - Domain: {{inputs.url}}
-        - Total pages: {{with.pages | length}}
-        - Broken: {{with.broken | length}}
-        - Soft 404: {{with.soft_404 | length}}
-        - Avg response: {{with.stats.avg}}ms
-        - Locales ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
-        - Sample URLs (50): {{with.pages | first(50) | pluck('url') | to_json}}
+        SITE: {{inputs.url}}
+        Total pages: {{with.pages | length}}
+        Broken: {{with.broken | length}}
+        Soft 404: {{with.soft_404 | length}}
+        Health score: compute round(100 * (total - broken - soft404) / total)
 
-        REQUIREMENTS:
-        1. Dark theme (#0f1117 background, #e2e8f0 text)
-        2. Top cards: Total Pages, Locales count, Health % (green if >=95), Domain
-        3. Tabs: "Treemap" and "Link Graph"
-        4. Treemap: squarified layout, one color per locale, cells show path + count
-        5. Link Graph: canvas force-directed graph with draggable nodes, zoom with wheel
-        6. Legend showing locale colors
-        7. Tooltip on hover for both views
+        LOCALES ({{with.by_locale | keys | length}} total):
+        {{with.by_locale | keys | to_json}}
 
-        The TREE data must have one child per locale with sub-children grouped by URL path section.
-        Distribute {{with.pages | length}} pages across {{with.by_locale | keys | length}} locales.
-        Each locale gets approximately {{with.pages | length}} / {{with.by_locale | keys | length}} pages.
+        Sample URLs per locale (100 total):
+        {{with.pages | first(100) | pluck('url') | to_json}}
 
-        The GRAPH data should have ~30 nodes (top URL paths) and ~40 links showing navigation.
+        Return EXACTLY two var assignments. No markdown, no explanation, no backticks.
 
-        Return the COMPLETE HTML file (<!DOCTYPE html> to </html>). No markdown fences.
-        All CSS inline in <style>, all JS inline in <script>. Self-contained, zero external deps.
-      temperature: 0.3
-      max_tokens: 16000
+        var TREE = {
+          name: "<domain>",
+          total_pages: <N>,
+          health_score: <N>,
+          children: [
+            {name: "<locale>", children: [{name: "<path_section>", value: <page_count>}]},
+            ... one entry per locale above ...
+          ]
+        };
+        var GRAPH = {
+          nodes: [{id: "<url_path>", g: "<group>"}],
+          links: [["<from_path>", "<to_path>"]]
+        };
+
+        RULES:
+        - TREE: one child per locale. Sub-children grouped by 2nd URL path segment. value = count.
+        - GRAPH: ~25 nodes (top URL paths), g = locale or category (root/doc/mkt/cnt/co).
+          ~35 links showing navigation hierarchy.
+        - EVERY locale must appear in TREE children.
+      temperature: 0.2
+      max_tokens: 12000
     artifact:
-      path: audit-dashboard.html
+      path: tmp/dashboard-data.js
       format: text
+
+  # Dashboard step 2: inject data into proven template (treemap + force graph always work)
+  - id: html_dashboard
+    description: "Inject data into fixed HTML template — reliable treemap + force graph"
+    depends_on: [dashboard_data]
+    exec:
+      command: >-
+        python3 -c "
+        import re
+        tpl = open('./templates/dashboard.html').read()
+        data = open('./artifacts/tmp/dashboard-data.js').read()
+        marker_start = '// ===== DATA'
+        marker_end = '// ===== END DATA ====='
+        i = tpl.find(marker_start)
+        j = tpl.find(marker_end)
+        if i >= 0 and j >= 0:
+            out = tpl[:i] + data + '\n' + tpl[j:]
+            open('./artifacts/audit-dashboard.html', 'w').write(out)
+            print('Dashboard built — template + injected data')
+        else:
+            print('ERROR: markers not found in template')
+        "
+      shell: true
