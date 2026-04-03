@@ -1,6 +1,6 @@
 schema: nika/workflow@0.12
-workflow: site-audit-v9
-description: "Full site audit — pages, locales, hreflang, visual artifacts. Zero python."
+workflow: site-audit-v10
+description: "Professional SEO + GEO site audit — crawl, enrich, analyze, chart, report"
 provider: openai
 model: gpt-5.2
 
@@ -8,10 +8,32 @@ artifacts:
   dir: ./artifacts
   max_size: 536870912
 
+skills:
+  seo: ./skills/seo-auditor.md
+
 inputs:
   url: "https://htmx.org"
 
 tasks:
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 0: GEO discovery (parallel with sitemap)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: fetch_robots
+    description: "Fetch robots.txt for AI crawler analysis"
+    fetch:
+      url: "{{inputs.url}}/robots.txt"
+      response: slim
+      extract: text
+      timeout: 10
+
+  - id: fetch_llmstxt
+    description: "Check for llms.txt (AI content discovery)"
+    fetch:
+      url: "{{inputs.url}}/llms.txt"
+      response: slim
+      timeout: 10
 
   # ═════════════════════════════════════════════════════════════════════
   # LAYER 1: Seeds (parallel)
@@ -395,12 +417,103 @@ tasks:
                   enum: [missing_return, target_not_crawled, no_self_ref]
 
   # ═════════════════════════════════════════════════════════════════════
+  # LAYER 6b: GEO Analysis (parallel with SEO analysis)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: geo_analysis
+    description: "GEO audit — AI crawler access + llms.txt + citability"
+    depends_on: [fetch_robots, fetch_llmstxt, enriched_pages]
+    with:
+      robots: $fetch_robots
+      llmstxt: $fetch_llmstxt
+      pages: $enriched_pages
+    infer:
+      prompt: |
+        Perform a GEO (Generative Engine Optimization) audit.
+
+        ROBOTS.TXT:
+        {{with.robots.extracted | default('Not found')}}
+
+        LLMS.TXT:
+        {{with.llmstxt.status}} — {{with.llmstxt.extracted | default('Not found')}}
+
+        Sample page titles (20):
+        {{with.pages | first(20) | pluck('title') | to_json}}
+
+        Analyze:
+        1. AI Crawler Access: Check robots.txt for these user-agents: GPTBot, ChatGPT-User,
+           Google-Extended, PerplexityBot, ClaudeBot, Amazonbot, anthropic-ai, Applebot-Extended,
+           cohere-ai, Bytespider, CCBot, FacebookBot, Meta-ExternalFetcher, OAI-SearchBot.
+           Report: allowed/blocked/not mentioned for each.
+
+        2. llms.txt Status: Does the site have an llms.txt file? What does it contain?
+
+        3. Content Citability: Based on page titles, estimate how well the content would be
+           cited by AI search engines. Look for: clear answer structures, factual claims,
+           descriptive titles, topic authority signals.
+
+        Return JSON only.
+      temperature: 0.0
+      max_tokens: 4000
+    structured:
+      schema:
+        type: object
+        required: [ai_crawler_access, llmstxt_status, citability_score, findings]
+        properties:
+          ai_crawler_access:
+            type: object
+            description: "Map of bot_name → allowed|blocked|not_mentioned"
+          llmstxt_status:
+            type: string
+            enum: [present, not_found, error]
+          citability_score:
+            type: integer
+            description: "0-100 estimate of AI citability"
+          findings:
+            type: array
+            items:
+              type: object
+              required: [issue, severity, recommendation]
+              properties:
+                issue: { type: string }
+                severity: { type: string, enum: [critical, high, medium, low] }
+                recommendation: { type: string }
+
+  # Status distribution chart (PNG)
+  - id: status_chart
+    description: "Generate status code distribution chart"
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:chart"
+      params:
+        type: "bar"
+        title: "HTTP Status Distribution"
+        width: 800
+        height: 400
+        series:
+          - name: "Pages"
+            data:
+              - "{{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}}"
+              - "{{with.pages | where('status', 'gte', 300) | where('status', 'lt', 400) | length}}"
+              - "{{with.pages | where('status', 'gte', 400) | where('status', 'lt', 500) | length}}"
+              - "{{with.pages | where('status', 'gte', 500) | length}}"
+        labels:
+          - "2xx OK"
+          - "3xx Redirect"
+          - "4xx Error"
+          - "5xx Error"
+    artifact:
+      path: charts/status-distribution.png
+      format: binary
+
+  # ═════════════════════════════════════════════════════════════════════
   # LAYER 7: Build sitemap JSON
   # ═════════════════════════════════════════════════════════════════════
 
   - id: build_sitemap
     depends_on: [enriched_pages, pages_by_locale, stats, broken_pages,
-                 soft_404_pages, hreflang_audit, hreflang_pages]
+                 soft_404_pages, hreflang_audit, hreflang_pages, geo_analysis]
     with:
       pages: $enriched_pages
       by_locale: $pages_by_locale
@@ -409,6 +522,7 @@ tasks:
       soft_404: $soft_404_pages
       hreflang: $hreflang_audit
       hreflang_pages: $hreflang_pages
+      geo: $geo_analysis
     invoke:
       tool: "nika:json_merge"
       params:
@@ -422,6 +536,7 @@ tasks:
           - pages: "{{with.pages}}"
           - pages_by_locale: "{{with.by_locale}}"
           - hreflang_audit: "{{with.hreflang}}"
+          - geo_audit: "{{with.geo}}"
           - broken: "{{with.broken}}"
           - soft_404: "{{with.soft_404}}"
           - stats: "{{with.stats}}"
@@ -466,7 +581,7 @@ tasks:
 
   - id: crawl_report
     depends_on: [stats, broken_pages, soft_404_pages, hreflang_audit,
-                 pages_by_locale, enriched_pages, hreflang_pages]
+                 pages_by_locale, enriched_pages, hreflang_pages, geo_analysis]
     with:
       stats: $stats
       broken: $broken_pages
@@ -475,32 +590,48 @@ tasks:
       by_locale: $pages_by_locale
       pages: $enriched_pages
       hreflang_pages: $hreflang_pages
+      geo: $geo_analysis
     infer:
       prompt: |
-        Generate a detailed markdown site audit report. Use ONLY the data provided.
+        Generate a professional markdown site audit report. Use the SEO auditor skill for scoring.
 
         SITE: {{inputs.url}}
         TOTAL PAGES: {{with.pages | length}}
-        LOCALES: {{with.by_locale | keys | to_json}}
-        LOCALE COUNT: {{with.by_locale | keys | length}}
+        LOCALES ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
         HREFLANG PAGES: {{with.hreflang_pages | length}}
         STATS: {{with.stats | to_json}}
-        BROKEN ({{with.broken | length}} pages): {{with.broken | pluck('url') | to_json}}
-        SOFT 404 ({{with.soft_404 | length}} pages): {{with.soft_404 | pluck('url') | to_json}}
+        BROKEN ({{with.broken | length}}): {{with.broken | pluck('url') | first(20) | to_json}}
+        SOFT 404 ({{with.soft_404 | length}}): {{with.soft_404 | pluck('url') | first(10) | to_json}}
         HREFLANG AUDIT: {{with.hreflang | to_json}}
+        GEO AUDIT: {{with.geo | to_json}}
         SAMPLE PAGES (20): {{with.pages | first(20) | to_json}}
 
-        Sections:
-        1. Executive Summary — total pages, locales, health score
-        2. Locale Breakdown — table (locale, page count, % of total)
-        3. SEO Health — broken pages, soft 404s
-        4. Hreflang Audit — issues found, bidirectional check results
-        5. Performance — avg/max response time
-        6. Top 20 Deepest Pages — table from sample
-        7. Issues Summary — all broken + soft 404
-        8. Recommendations — actionable SEO improvements
+        STATUS DISTRIBUTION:
+        - 2xx: {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}}
+        - 3xx: {{with.pages | where('status', 'gte', 300) | where('status', 'lt', 400) | length}}
+        - 4xx: {{with.pages | where('status', 'gte', 400) | where('status', 'lt', 500) | length}}
+        - 5xx: {{with.pages | where('status', 'gte', 500) | length}}
+
+        DEPTH DISTRIBUTION:
+        - Depth 0: {{with.pages | where('depth', 'eq', 0) | length}}
+        - Depth 1: {{with.pages | where('depth', 'eq', 1) | length}}
+        - Depth 2: {{with.pages | where('depth', 'eq', 2) | length}}
+        - Depth 3: {{with.pages | where('depth', 'eq', 3) | length}}
+        - Depth 4+: {{with.pages | where('depth', 'gte', 4) | length}}
+
+        Generate these sections:
+        1. Executive Summary — health score (use skill formula), top 3 priorities
+        2. SEO Score Breakdown — status distribution, issues by severity
+        3. Locale & International — locale breakdown table, hreflang coverage
+        4. GEO Analysis — AI crawler access, llms.txt status, citability score
+        5. Crawl Depth Analysis — depth distribution, flagged deep pages
+        6. Performance — response time stats
+        7. Issues Index — all issues grouped by severity (CRITICAL/HIGH/MEDIUM/LOW)
+        8. Recommendations — prioritized action plan (Quick Wins / This Month / This Quarter)
+
+        Use tables, ASCII bar charts for distributions. Be specific with URLs and numbers.
       temperature: 0.0
-      max_tokens: 6000
+      max_tokens: 8000
     artifact:
       path: crawl-report.md
       format: markdown
