@@ -682,9 +682,11 @@ tasks:
         };
 
         RULES:
-        - TREE: one child per locale. Sub-children grouped by 2nd URL path segment. value = count.
+        - TREE: one child per locale. Sub-children grouped by 2nd URL path segment. value = page count (must be > 0).
+        - TREE: all children values must sum to approximately total_pages.
         - GRAPH: ~25 nodes (top URL paths), g = locale or category (root/doc/mkt/cnt/co).
           ~35 links showing navigation hierarchy.
+        - GRAPH CRITICAL: every ID used in links MUST exist in nodes array. No dangling references.
         - EVERY locale must appear in TREE children.
       temperature: 0.2
       max_tokens: 12000
