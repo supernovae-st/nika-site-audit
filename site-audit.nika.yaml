@@ -671,17 +671,17 @@ tasks:
         SOFT 404: {{with.soft_404 | length}}
         HEALTH: round(100 * ({{with.pages | length}} - {{with.broken | length}} - {{with.soft_404 | length}}) / {{with.pages | length}})
 
-        EXACT LOCALE BREAKDOWN (use these EXACT numbers):
-        {{with.by_locale | keys | to_json}}
+        LOCALE LIST: {{with.by_locale | keys | to_json}}
+        SECTION LIST: {{with.by_section | keys | to_json}}
 
-        EXACT SECTION BREAKDOWN (use these EXACT numbers for treemap):
-        {{with.by_section | keys | to_json}}
+        ALL PAGE SECTIONS (count occurrences for exact treemap values):
+        {{with.pages | pluck('section') | to_json}}
 
-        TOP 30 PAGE URLs (use for graph nodes):
-        {{with.pages | first(30) | pluck('url') | to_json}}
+        ALL PAGE LOCALES (count occurrences for exact locale values):
+        {{with.pages | pluck('locale') | to_json}}
 
-        NEXT 30 URLs (use for more graph connections):
-        {{with.pages | slice(30, 60) | pluck('url') | to_json}}
+        TOP 60 PAGE URLs (for graph nodes + links):
+        {{with.pages | first(60) | pluck('url') | to_json}}
 
         Return EXACTLY two var assignments. No markdown, no backticks.
 
