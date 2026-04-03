@@ -27,7 +27,6 @@ ANY URL → sitemap parsing → page crawl → enrichment → analysis → 4 art
 ```bash
 # Install nika
 brew install supernovae-st/tap/nika
-# or: cargo install nika
 
 # Clone this repo
 git clone https://github.com/supernovae-st/nika-site-audit.git
@@ -36,18 +35,24 @@ cd nika-site-audit
 # Set your API key
 export OPENAI_API_KEY=sk-...
 
-# Run on any site
-nika run site-audit.nika.yaml
+# Audit any site
+./audit https://htmx.org
+./audit https://kubernetes.io
+./audit https://qrcode-ai.com
 
-# Run on a specific site
-nika run site-audit.nika.yaml -i url=https://kubernetes.io
+# Results in artifacts/
+open artifacts/audit-dashboard.html
+cat artifacts/crawl-report.md
+```
 
-# Check output
-ls artifacts/
-# sitemap.json          — Full enriched page data
-# site-structure.md     — Mermaid diagram by locale
-# crawl-report.md       — SEO audit report (8 sections)
-# audit-dashboard.html  — Interactive HTML dashboard
+### Output
+
+```
+artifacts/
+├── sitemap.json          Full enriched page data
+├── site-structure.md     Mermaid diagram by locale
+├── crawl-report.md       SEO audit report (8 sections)
+└── audit-dashboard.html  Interactive HTML dashboard
 ```
 
 ## Tested Sites

@@ -1,0 +1,12 @@
+#!/bin/bash
+# Site Audit — Usage: ./audit https://example.com
+set -euo pipefail
+
+URL="${1:?Usage: ./audit <url>}"
+
+echo "Auditing $URL..."
+rm -rf artifacts && mkdir -p artifacts/tmp
+nika run site-audit.nika.yaml -i "url=$URL"
+echo ""
+echo "Done! Results in artifacts/"
+ls -lh artifacts/*.{json,md,html} 2>/dev/null
