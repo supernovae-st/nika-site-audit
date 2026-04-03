@@ -318,10 +318,21 @@ tasks:
           canonical: "extracted.canonical | default('')"
           hreflang_count: "extracted.hreflang | default([]) | length"
           is_soft_404: "extracted.title | default('') | lower | contains('not found')"
+          section: "url | url_path | split('/') | compact | slice(0, 2) | last | default('/')"
 
   # ═════════════════════════════════════════════════════════════════════
   # LAYER 6: Analysis (parallel — all native, zero LLM)
   # ═════════════════════════════════════════════════════════════════════
+
+  # Group pages by URL section (for treemap data)
+  - id: pages_by_section
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:group_by"
+      params:
+        array: "{{with.pages}}"
+        key: "section"
 
   - id: pages_by_locale
     depends_on: [enriched_pages]
@@ -640,55 +651,59 @@ tasks:
       format: markdown
 
   # Generate dashboard data (TREE + GRAPH JS variables)
-  # Dashboard step 1: LLM generates ONLY the data (TREE + GRAPH JS objects)
+  # Dashboard step 1: LLM formats native data into JS objects
   - id: dashboard_data
-    description: "Generate treemap + graph data objects for dashboard template"
-    depends_on: [pages_by_locale, enriched_pages, broken_pages, soft_404_pages]
+    description: "Format treemap + graph data from native analysis"
+    depends_on: [pages_by_locale, pages_by_section, enriched_pages, broken_pages, soft_404_pages]
     with:
       by_locale: $pages_by_locale
+      by_section: $pages_by_section
       pages: $enriched_pages
       broken: $broken_pages
       soft_404: $soft_404_pages
     infer:
       prompt: |
-        Generate TWO JavaScript variable assignments for a site audit dashboard.
+        Convert this audit data into TWO JavaScript variable assignments.
 
         SITE: {{inputs.url}}
-        Total pages: {{with.pages | length}}
-        Broken: {{with.broken | length}}
-        Soft 404: {{with.soft_404 | length}}
-        Health score: compute round(100 * (total - broken - soft404) / total)
+        TOTAL PAGES: {{with.pages | length}}
+        BROKEN: {{with.broken | length}}
+        SOFT 404: {{with.soft_404 | length}}
+        HEALTH: round(100 * ({{with.pages | length}} - {{with.broken | length}} - {{with.soft_404 | length}}) / {{with.pages | length}})
 
-        LOCALES ({{with.by_locale | keys | length}} total):
+        EXACT LOCALE BREAKDOWN (use these EXACT numbers):
         {{with.by_locale | keys | to_json}}
 
-        Sample URLs per locale (100 total):
-        {{with.pages | first(100) | pluck('url') | to_json}}
+        EXACT SECTION BREAKDOWN (use these EXACT numbers for treemap):
+        {{with.by_section | keys | to_json}}
 
-        Return EXACTLY two var assignments. No markdown, no explanation, no backticks.
+        TOP 30 PAGE URLs (use for graph nodes):
+        {{with.pages | first(30) | pluck('url') | to_json}}
+
+        NEXT 30 URLs (use for more graph connections):
+        {{with.pages | slice(30, 60) | pluck('url') | to_json}}
+
+        Return EXACTLY two var assignments. No markdown, no backticks.
 
         var TREE = {
-          name: "<domain>",
-          total_pages: <N>,
-          health_score: <N>,
-          children: [
-            {name: "<locale>", children: [{name: "<path_section>", value: <page_count>}]},
-            ... one entry per locale above ...
+          name:"<domain>", total_pages:<N>, health_score:<N>,
+          children:[
+            {name:"<locale>", children:[{name:"<section>", value:<EXACT_COUNT>}]}
           ]
         };
         var GRAPH = {
-          nodes: [{id: "<url_path>", g: "<group>"}],
-          links: [["<from_path>", "<to_path>"]]
+          nodes:[{id:"<path>", g:"<group>"}],
+          links:[["<from>","<to>"]]
         };
 
-        RULES:
-        - TREE: one child per locale. Sub-children grouped by 2nd URL path segment. value = page count (must be > 0).
-        - TREE: all children values must sum to approximately total_pages.
-        - GRAPH: ~25 nodes (top URL paths), g = locale or category (root/doc/mkt/cnt/co).
-          ~35 links showing navigation hierarchy.
-        - GRAPH CRITICAL: every ID used in links MUST exist in nodes array. No dangling references.
-        - EVERY locale must appear in TREE children.
-      temperature: 0.2
+        CRITICAL RULES:
+        1. TREE children: one per locale. Each locale's sub-children = sections with EXACT page counts from the data above.
+        2. TREE values MUST sum to total_pages exactly.
+        3. GRAPH: create nodes for the top 25 most important paths from the URLs above. g = group category (root/doc/mkt/cnt/co/auth).
+        4. GRAPH: ~35 links showing parent-child URL relationships (e.g. /docs/ → /docs/api/).
+        5. EVERY id in links MUST exist in nodes. No dangling references.
+        6. Do NOT invent URLs — only use paths from the data provided.
+      temperature: 0.0
       max_tokens: 12000
     artifact:
       path: tmp/dashboard-data.js
