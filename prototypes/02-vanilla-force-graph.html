@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Link Graph — Vanilla JS Force-Directed</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  .hud {
+    position: fixed; top: 16px; left: 16px; background: rgba(30,33,48,0.92);
+    border: 1px solid #2d3148; border-radius: 12px; padding: 14px 18px;
+    font-size: 0.8rem; backdrop-filter: blur(8px); z-index: 10; min-width: 200px;
+  }
+  .hud h2 { font-size: 1rem; margin-bottom: 8px; color: #f1f5f9; }
+  .hud .stat { color: #94a3b8; margin: 2px 0; }
+  .hud .stat b { color: #e2e8f0; }
+  .hover-label {
+    position: fixed; display: none; background: #1e2130; border: 1px solid #3d4160;
+    border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; z-index: 20;
+    pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .hover-label.show { display: block; }
+  .hover-label .hl-path { font-weight: 600; color: #f1f5f9; }
+  .hover-label .hl-links { color: #94a3b8; font-size: 0.75rem; }
+  .controls {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(30,33,48,0.9); border: 1px solid #2d3148;
+    border-radius: 8px; padding: 8px 16px; font-size: 0.75rem; color: #64748b;
+    backdrop-filter: blur(8px);
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="hud">
+  <h2>Link Graph</h2>
+  <div class="stat">Nodes: <b id="nodeCount">0</b></div>
+  <div class="stat">Edges: <b id="edgeCount">0</b></div>
+  <div class="stat">Components: <b id="compCount">0</b></div>
+</div>
+<div class="hover-label" id="hoverLabel">
+  <div class="hl-path"></div>
+  <div class="hl-links"></div>
+</div>
+<div class="controls">Drag nodes  |  Scroll to zoom  |  Click background to pan</div>
+
+<script>
+// ===== DATA =====
+const GRAPH = {
+  nodes: [
+    {id: "/", group: "root"},
+    {id: "/pricing", group: "marketing"},
+    {id: "/blog", group: "content"},
+    {id: "/blog/ai-trends", group: "content"},
+    {id: "/blog/seo-guide", group: "content"},
+    {id: "/blog/performance", group: "content"},
+    {id: "/docs", group: "docs"},
+    {id: "/docs/getting-started", group: "docs"},
+    {id: "/docs/api-reference", group: "docs"},
+    {id: "/docs/webhooks", group: "docs"},
+    {id: "/docs/auth", group: "docs"},
+    {id: "/about", group: "marketing"},
+    {id: "/contact", group: "marketing"},
+    {id: "/careers", group: "company"},
+    {id: "/changelog", group: "product"},
+    {id: "/security", group: "company"},
+    {id: "/api", group: "docs"},
+    {id: "/status", group: "product"},
+    {id: "/login", group: "auth"},
+    {id: "/signup", group: "auth"}
+  ],
+  links: [
+    {source: "/", target: "/pricing"}, {source: "/", target: "/blog"},
+    {source: "/", target: "/docs"}, {source: "/", target: "/about"},
+    {source: "/", target: "/login"}, {source: "/", target: "/signup"},
+    {source: "/blog", target: "/blog/ai-trends"}, {source: "/blog", target: "/blog/seo-guide"},
+    {source: "/blog", target: "/blog/performance"},
+    {source: "/blog/ai-trends", target: "/docs"}, {source: "/blog/seo-guide", target: "/pricing"},
+    {source: "/docs", target: "/docs/getting-started"}, {source: "/docs", target: "/docs/api-reference"},
+    {source: "/docs", target: "/docs/webhooks"}, {source: "/docs", target: "/docs/auth"},
+    {source: "/docs/getting-started", target: "/docs/api-reference"},
+    {source: "/docs/api-reference", target: "/docs/webhooks"},
+    {source: "/docs/auth", target: "/security"},
+    {source: "/about", target: "/contact"}, {source: "/about", target: "/careers"},
+    {source: "/pricing", target: "/signup"}, {source: "/changelog", target: "/docs"},
+    {source: "/api", target: "/docs/api-reference"}, {source: "/status", target: "/api"},
+    {source: "/login", target: "/signup"}, {source: "/careers", target: "/about"}
+  ]
+};
+
+// ===== COLORS =====
+const GROUP_COLORS = {
+  root: '#f59e0b', marketing: '#6366f1', content: '#10b981',
+  docs: '#06b6d4', company: '#8b5cf6', product: '#ec4899', auth: '#ef4444'
+};
+
+// ===== FORCE SIMULATION (vanilla) =====
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, dpr;
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// Init node positions
+const nodes = GRAPH.nodes.map((n, i) => ({
+  ...n, x: W/2 + (Math.random()-0.5)*300, y: H/2 + (Math.random()-0.5)*300,
+  vx: 0, vy: 0, linkCount: 0
+}));
+const nodeMap = {};
+nodes.forEach(n => nodeMap[n.id] = n);
+
+const links = GRAPH.links.map(l => ({
+  source: nodeMap[l.source], target: nodeMap[l.target]
+}));
+links.forEach(l => { l.source.linkCount++; l.target.linkCount++; });
+
+// Stats
+document.getElementById('nodeCount').textContent = nodes.length;
+document.getElementById('edgeCount').textContent = links.length;
+// Simple component count via BFS
+const visited = new Set();
+let components = 0;
+nodes.forEach(n => {
+  if (visited.has(n.id)) return;
+  components++;
+  const queue = [n];
+  while (queue.length) {
+    const cur = queue.shift();
+    if (visited.has(cur.id)) continue;
+    visited.add(cur.id);
+    links.forEach(l => {
+      if (l.source.id === cur.id && !visited.has(l.target.id)) queue.push(l.target);
+      if (l.target.id === cur.id && !visited.has(l.source.id)) queue.push(l.source);
+    });
+  }
+});
+document.getElementById('compCount').textContent = components;
+
+// Physics
+const SPRING_LEN = 80, SPRING_K = 0.008, REPULSION = 3000, DAMPING = 0.88, CENTER_K = 0.002;
+
+function simulate() {
+  // Repulsion (all pairs)
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i+1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      let force = REPULSION / (dist * dist);
+      let fx = (dx/dist)*force, fy = (dy/dist)*force;
+      a.vx -= fx; a.vy -= fy;
+      b.vx += fx; b.vy += fy;
+    }
+  }
+  // Springs (links)
+  links.forEach(l => {
+    let dx = l.target.x - l.source.x, dy = l.target.y - l.source.y;
+    let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    let force = (dist - SPRING_LEN) * SPRING_K;
+    let fx = (dx/dist)*force, fy = (dy/dist)*force;
+    l.source.vx += fx; l.source.vy += fy;
+    l.target.vx -= fx; l.target.vy -= fy;
+  });
+  // Center gravity
+  nodes.forEach(n => {
+    n.vx += (W/2 - n.x) * CENTER_K;
+    n.vy += (H/2 - n.y) * CENTER_K;
+  });
+  // Integrate
+  nodes.forEach(n => {
+    if (n.dragging) return;
+    n.vx *= DAMPING; n.vy *= DAMPING;
+    n.x += n.vx; n.y += n.vy;
+  });
+}
+
+// Camera
+let camX = 0, camY = 0, camScale = 1;
+
+function toScreen(x, y) {
+  return [(x + camX) * camScale + W/2, (y + camY) * camScale + H/2];
+}
+function toWorld(sx, sy) {
+  return [(sx - W/2) / camScale - camX, (sy - H/2) / camScale - camY];
+}
+
+// Draw
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  ctx.scale(camScale, camScale);
+  ctx.translate(camX, camY);
+
+  // Links
+  ctx.lineWidth = 1 / camScale;
+  links.forEach(l => {
+    ctx.strokeStyle = 'rgba(100,116,139,0.25)';
+    ctx.beginPath();
+    ctx.moveTo(l.source.x, l.source.y);
+    ctx.lineTo(l.target.x, l.target.y);
+    ctx.stroke();
+  });
+
+  // Nodes
+  nodes.forEach(n => {
+    const r = Math.max(4, Math.sqrt(n.linkCount) * 4);
+    const color = GROUP_COLORS[n.group] || '#6366f1';
+    // Glow
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r + 3, 0, Math.PI*2);
+    ctx.fillStyle = color.replace(')', ', 0.15)').replace('rgb', 'rgba').replace('#', '');
+    // Simple glow
+    ctx.shadowColor = color; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.shadowBlur = 0;
+    // Label (only if zoomed enough)
+    if (camScale > 0.6 || n.group === 'root') {
+      ctx.fillStyle = '#e2e8f0';
+      ctx.font = `${11/camScale}px -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(n.id, n.x, n.y - r - 6/camScale);
+    }
+  });
+
+  ctx.restore();
+}
+
+// Interaction
+let dragNode = null, isPanning = false, panStart = {x:0, y:0};
+
+canvas.addEventListener('mousedown', e => {
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  // Find closest node
+  let closest = null, minD = 20/camScale;
+  nodes.forEach(n => {
+    const d = Math.sqrt((n.x-wx)**2 + (n.y-wy)**2);
+    if (d < minD) { minD = d; closest = n; }
+  });
+  if (closest) {
+    dragNode = closest;
+    dragNode.dragging = true;
+  } else {
+    isPanning = true;
+    panStart = {x: e.clientX, y: e.clientY};
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (dragNode) {
+    const [wx, wy] = toWorld(e.clientX, e.clientY);
+    dragNode.x = wx; dragNode.y = wy;
+    dragNode.vx = 0; dragNode.vy = 0;
+  } else if (isPanning) {
+    camX += (e.clientX - panStart.x) / camScale;
+    camY += (e.clientY - panStart.y) / camScale;
+    panStart = {x: e.clientX, y: e.clientY};
+  }
+  // Hover label
+  const [wx, wy] = toWorld(e.clientX, e.clientY);
+  let hovered = null, minD = 20/camScale;
+  nodes.forEach(n => {
+    const d = Math.sqrt((n.x-wx)**2 + (n.y-wy)**2);
+    if (d < minD) { minD = d; hovered = n; }
+  });
+  const label = document.getElementById('hoverLabel');
+  if (hovered && !dragNode) {
+    label.classList.add('show');
+    label.querySelector('.hl-path').textContent = hovered.id;
+    label.querySelector('.hl-links').textContent = `${hovered.linkCount} connections | ${hovered.group}`;
+    label.style.left = (e.clientX + 14) + 'px';
+    label.style.top = (e.clientY - 36) + 'px';
+  } else {
+    label.classList.remove('show');
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (dragNode) dragNode.dragging = false;
+  dragNode = null; isPanning = false;
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.92 : 1.08;
+  camScale = Math.max(0.2, Math.min(5, camScale * factor));
+}, {passive: false});
+
+// Animation loop
+function tick() {
+  simulate();
+  draw();
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>

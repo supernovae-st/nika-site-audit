@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Structure — CSS-Only Treemap</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  .dashboard { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 20px; color: #f1f5f9; }
+
+  /* === Summary Cards === */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .card {
+    background: #1e2130; border: 1px solid #2d3148; border-radius: 12px;
+    padding: 16px 20px; position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--accent, #6366f1);
+  }
+  .card .label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 4px; }
+  .card .value { font-size: 1.75rem; font-weight: 700; color: #f1f5f9; }
+  .card .sub { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+
+  /* === CSS Treemap === */
+  .treemap { display: flex; flex-wrap: wrap; gap: 3px; border-radius: 12px; overflow: hidden; background: #1a1d2e; padding: 3px; }
+  .locale-group {
+    flex: var(--weight, 1); min-width: 120px; min-height: 80px;
+    display: flex; flex-wrap: wrap; gap: 2px; padding: 2px;
+    border-radius: 8px; overflow: hidden; position: relative;
+    background: color-mix(in srgb, var(--hue, #6366f1) 15%, #1a1d2e);
+    border: 1px solid color-mix(in srgb, var(--hue, #6366f1) 30%, transparent);
+  }
+  .locale-group > .group-label {
+    position: absolute; top: 6px; left: 10px; font-size: 0.7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; z-index: 2;
+    color: color-mix(in srgb, var(--hue, #6366f1) 80%, white);
+    opacity: 0.9;
+  }
+  .page-cell {
+    flex: var(--w, 1); min-width: 40px; min-height: 36px;
+    background: color-mix(in srgb, var(--hue, #6366f1) 25%, #1e2130);
+    border-radius: 4px; padding: 4px 6px; font-size: 0.65rem;
+    color: #cbd5e1; display: flex; align-items: flex-end;
+    cursor: pointer; transition: all 0.15s ease; position: relative;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .page-cell:hover {
+    background: color-mix(in srgb, var(--hue, #6366f1) 45%, #1e2130);
+    transform: scale(1.02); z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .page-cell .path { opacity: 0.8; }
+  .page-cell .count {
+    position: absolute; top: 3px; right: 5px; font-size: 0.6rem;
+    font-weight: 600; opacity: 0.5;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    display: none; position: fixed; background: #1e2130; border: 1px solid #3d4160;
+    border-radius: 8px; padding: 10px 14px; font-size: 0.8rem; z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5); pointer-events: none;
+    max-width: 300px;
+  }
+  .tooltip.show { display: block; }
+  .tooltip .tt-path { font-weight: 600; color: #f1f5f9; margin-bottom: 4px; }
+  .tooltip .tt-meta { color: #94a3b8; font-size: 0.75rem; }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #94a3b8; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <h1>Site Structure</h1>
+  <div class="cards" id="cards"></div>
+  <div class="treemap" id="treemap"></div>
+  <div class="legend" id="legend"></div>
+</div>
+<div class="tooltip" id="tooltip">
+  <div class="tt-path"></div>
+  <div class="tt-meta"></div>
+</div>
+
+<script>
+// ===== DATA (injected by workflow) =====
+const DATA = {
+  "name": "example.com",
+  "total_pages": 1586,
+  "health_score": 98,
+  "children": [
+    {"name": "en", "children": [
+      {"name": "/", "value": 42}, {"name": "/pricing", "value": 18},
+      {"name": "/blog", "value": 156}, {"name": "/docs", "value": 230},
+      {"name": "/api", "value": 87}, {"name": "/about", "value": 12},
+      {"name": "/contact", "value": 5}, {"name": "/careers", "value": 34},
+      {"name": "/changelog", "value": 67}, {"name": "/security", "value": 8}
+    ]},
+    {"name": "fr", "children": [
+      {"name": "/", "value": 38}, {"name": "/tarifs", "value": 15},
+      {"name": "/blog", "value": 120}, {"name": "/docs", "value": 180},
+      {"name": "/api", "value": 72}, {"name": "/a-propos", "value": 10},
+      {"name": "/contact", "value": 5}, {"name": "/carrieres", "value": 28}
+    ]},
+    {"name": "de", "children": [
+      {"name": "/", "value": 30}, {"name": "/preise", "value": 12},
+      {"name": "/blog", "value": 95}, {"name": "/docs", "value": 140},
+      {"name": "/api", "value": 60}, {"name": "/kontakt", "value": 4}
+    ]},
+    {"name": "ja", "children": [
+      {"name": "/", "value": 25}, {"name": "/blog", "value": 45},
+      {"name": "/docs", "value": 88}, {"name": "/api", "value": 40}
+    ]},
+    {"name": "es", "children": [
+      {"name": "/", "value": 20}, {"name": "/blog", "value": 38},
+      {"name": "/docs", "value": 65}
+    ]},
+    {"name": "pt", "children": [
+      {"name": "/", "value": 15}, {"name": "/blog", "value": 22},
+      {"name": "/docs", "value": 40}
+    ]}
+  ]
+};
+
+// ===== COLORS =====
+const PALETTE = [
+  '#6366f1', '#06b6d4', '#10b981', '#f59e0b',
+  '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6'
+];
+
+// ===== RENDER =====
+function render(data) {
+  const totalPages = data.total_pages || data.children.reduce(function(s, l) { return s + l.children.reduce(function(ss, p) { return ss + p.value; }, 0); }, 0);
+  const localeCount = data.children.length;
+  const health = data.health_score || 100;
+
+  // Cards - built with DOM API
+  var cardsEl = document.getElementById('cards');
+  var cards = [
+    { label: 'Total Pages', value: totalPages.toLocaleString(), accent: '#6366f1' },
+    { label: 'Locales', value: localeCount, accent: '#06b6d4' },
+    { label: 'Health', value: health + '%', sub: health >= 95 ? 'Excellent' : health >= 80 ? 'Good' : 'Needs work', accent: health >= 95 ? '#10b981' : health >= 80 ? '#f59e0b' : '#ef4444' },
+    { label: 'Domain', value: data.name, accent: '#8b5cf6' }
+  ];
+  cards.forEach(function(c) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.setProperty('--accent', c.accent);
+    var lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = c.label;
+    var val = document.createElement('div'); val.className = 'value'; val.textContent = c.value;
+    card.appendChild(lbl);
+    card.appendChild(val);
+    if (c.sub) { var sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = c.sub; card.appendChild(sub); }
+    cardsEl.appendChild(card);
+  });
+
+  // Treemap - built with DOM API
+  var treemapEl = document.getElementById('treemap');
+  var maxLocaleSize = Math.max.apply(null, data.children.map(function(l) { return l.children.reduce(function(s,p) { return s+p.value; }, 0); }));
+
+  data.children.forEach(function(locale, i) {
+    var color = PALETTE[i % PALETTE.length];
+    var localeTotal = locale.children.reduce(function(s, p) { return s + p.value; }, 0);
+    var weight = Math.max(1, Math.round((localeTotal / maxLocaleSize) * 10));
+    var sorted = locale.children.slice().sort(function(a, b) { return b.value - a.value; });
+
+    var group = document.createElement('div');
+    group.className = 'locale-group';
+    group.style.setProperty('--hue', color);
+    group.style.setProperty('--weight', weight);
+
+    var groupLabel = document.createElement('span');
+    groupLabel.className = 'group-label';
+    groupLabel.textContent = locale.name;
+    group.appendChild(groupLabel);
+
+    sorted.forEach(function(page) {
+      var w = Math.max(1, Math.round((page.value / localeTotal) * 20));
+      var cell = document.createElement('div');
+      cell.className = 'page-cell';
+      cell.style.setProperty('--hue', color);
+      cell.style.setProperty('--w', w);
+      cell.dataset.locale = locale.name;
+      cell.dataset.path = page.name;
+      cell.dataset.count = page.value;
+
+      var pathSpan = document.createElement('span');
+      pathSpan.className = 'path';
+      pathSpan.textContent = page.name;
+      var countSpan = document.createElement('span');
+      countSpan.className = 'count';
+      countSpan.textContent = page.value;
+      cell.appendChild(pathSpan);
+      cell.appendChild(countSpan);
+      group.appendChild(cell);
+    });
+
+    treemapEl.appendChild(group);
+  });
+
+  // Legend - built with DOM API
+  var legendEl = document.getElementById('legend');
+  data.children.forEach(function(locale, i) {
+    var color = PALETTE[i % PALETTE.length];
+    var count = locale.children.reduce(function(s, p) { return s + p.value; }, 0);
+    var item = document.createElement('div');
+    item.className = 'legend-item';
+    var dot = document.createElement('div');
+    dot.className = 'legend-dot';
+    dot.style.background = color;
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(locale.name + ' (' + count + ')'));
+    legendEl.appendChild(item);
+  });
+
+  // Tooltips
+  var tooltip = document.getElementById('tooltip');
+  var ttPath = tooltip.querySelector('.tt-path');
+  var ttMeta = tooltip.querySelector('.tt-meta');
+  treemapEl.addEventListener('mousemove', function(e) {
+    var cell = e.target.closest('.page-cell');
+    if (cell) {
+      tooltip.classList.add('show');
+      ttPath.textContent = '/' + cell.dataset.locale + cell.dataset.path;
+      ttMeta.textContent = cell.dataset.count + ' pages';
+      tooltip.style.left = (e.clientX + 12) + 'px';
+      tooltip.style.top = (e.clientY - 40) + 'px';
+    } else {
+      tooltip.classList.remove('show');
+    }
+  });
+  treemapEl.addEventListener('mouseleave', function() { tooltip.classList.remove('show'); });
+}
+
+render(DATA);
+</script>
+</body>
+</html>

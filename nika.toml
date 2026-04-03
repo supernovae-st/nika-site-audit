@@ -1,0 +1,14 @@
+[project]
+name = "nika-site-audit"
+description = "Full site audit workflow — crawl, enrich, analyze, report"
+
+[provider]
+default = "openai"
+model = "gpt-4.1-mini"
+
+[tools]
+allow_exec = true
+allow_network = true
+
+[artifacts]
+dir = "./artifacts"

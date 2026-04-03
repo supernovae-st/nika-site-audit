@@ -1,0 +1,556 @@
+schema: nika/workflow@0.12
+workflow: site-audit-v9
+description: "Full site audit — pages, locales, hreflang, visual artifacts. Zero python."
+provider: openai
+model: gpt-4.1-mini
+
+artifacts:
+  dir: ./artifacts
+  max_size: 536870912
+
+inputs:
+  url: "https://htmx.org"
+
+tasks:
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 1: Seeds (parallel)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: fetch_sitemap
+    description: "Parse sitemap.xml — returns empty on 404 (spider mode)"
+    fetch:
+      url: "{{inputs.url}}/sitemap.xml"
+      response: slim
+      extract: sitemap
+      timeout: 30
+    retry:
+      max_attempts: 2
+      delay_ms: 2000
+      backoff: 2.0
+
+  - id: fetch_homepage
+    description: "Extract all links from homepage"
+    fetch:
+      url: "{{inputs.url}}"
+      extract: links
+      timeout: 20
+    retry:
+      max_attempts: 3
+      delay_ms: 2000
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 2: Expand sitemapindex
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: fetch_sub_sitemaps
+    depends_on: [fetch_sitemap]
+    for_each: "$fetch_sitemap.extracted.sitemaps"
+    as: sm
+    concurrency: 5
+    fail_fast: false
+    fetch:
+      url: "{{with.sm.loc}}"
+      extract: sitemap
+      timeout: 30
+    retry:
+      max_attempts: 3
+      delay_ms: 3000
+      backoff: 2.0
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 3: Combine all seed URLs
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: main_urls
+    depends_on: [fetch_sitemap]
+    with: { data: $fetch_sitemap }
+    invoke:
+      tool: "nika:map"
+      params:
+        array: "{{with.data.extracted.urls}}"
+        selector: "loc"
+
+  - id: sub_urls
+    depends_on: [fetch_sub_sitemaps]
+    with: { data: $fetch_sub_sitemaps }
+    invoke:
+      tool: "nika:json_query"
+      params:
+        data: "{{with.data}}"
+        query: "$..loc"
+
+  - id: homepage_urls_raw
+    depends_on: [fetch_homepage]
+    with: { data: $fetch_homepage }
+    invoke:
+      tool: "nika:map"
+      params:
+        array: "{{with.data.links}}"
+        selector: "url"
+
+  # Filter homepage links to same-domain only (prevents crawling external sites)
+  - id: homepage_link_objects
+    depends_on: [fetch_homepage]
+    with: { data: $fetch_homepage }
+    invoke:
+      tool: "nika:filter"
+      params:
+        array: "{{with.data.links}}"
+        field: "url"
+        op: "starts_with"
+        value: "{{inputs.url}}"
+
+  - id: homepage_urls
+    depends_on: [homepage_link_objects]
+    with: { links: $homepage_link_objects }
+    invoke:
+      tool: "nika:map"
+      params:
+        array: "{{with.links}}"
+        selector: "url"
+
+  - id: sitemap_urls
+    depends_on: [main_urls, sub_urls]
+    with: { main: $main_urls, subs: $sub_urls }
+    invoke:
+      tool: "nika:json_merge"
+      params:
+        items: ["{{with.main}}", "{{with.subs}}"]
+        mode: "concat"
+
+  - id: new_homepage_urls
+    depends_on: [sitemap_urls, homepage_urls]
+    with: { home: $homepage_urls, sitemap: $sitemap_urls }
+    invoke:
+      tool: "nika:set_diff"
+      params:
+        a: "{{with.home}}"
+        b: "{{with.sitemap}}"
+
+  - id: all_urls
+    depends_on: [sitemap_urls, new_homepage_urls]
+    with: { sitemap: $sitemap_urls, new: $new_homepage_urls }
+    invoke:
+      tool: "nika:json_merge"
+      params:
+        items: ["{{with.sitemap}}", "{{with.new}}"]
+        mode: "concat"
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 4: Crawl — response:slim + extract:metadata
+  # ~800 bytes/page, governor 10 RPS
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: crawl_pages
+    description: "Crawl all pages — metadata per page"
+    depends_on: [all_urls]
+    for_each: "$all_urls"
+    as: page_url
+    concurrency: 10
+    fail_fast: false
+    fetch:
+      url: "{{with.page_url}}"
+      response: slim
+      extract: metadata
+      timeout: 15
+    retry:
+      max_attempts: 2
+      delay_ms: 2000
+      backoff: 2.0
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 5: Round 2 — Link discovery on sample pages
+  # Fetch links from 20 sample pages → filter internal → set_diff → crawl new
+  # ═════════════════════════════════════════════════════════════════════
+
+  # 5a. Pick 20 sample URLs for link extraction
+  - id: sample_urls
+    depends_on: [all_urls]
+    with: { urls: $all_urls }
+    invoke:
+      tool: "nika:json_query"
+      params:
+        data: "{{with.urls}}"
+        query: "$[0:20]"
+
+  # 5b. Fetch links from 20 sample pages
+  - id: sample_links
+    depends_on: [sample_urls]
+    for_each: "$sample_urls"
+    as: page_url
+    concurrency: 5
+    fail_fast: false
+    fetch:
+      url: "{{with.page_url}}"
+      extract: links
+      timeout: 15
+    retry:
+      max_attempts: 2
+      delay_ms: 2000
+
+  # 5c. Extract all link objects from sample results
+  - id: all_link_objects
+    depends_on: [sample_links]
+    with: { results: $sample_links }
+    invoke:
+      tool: "nika:json_query"
+      params:
+        data: "{{with.results}}"
+        query: "$..links[*]"
+
+  # 5d. Filter to same-domain link objects
+  - id: internal_link_objects
+    depends_on: [all_link_objects]
+    with: { links: $all_link_objects }
+    invoke:
+      tool: "nika:filter"
+      params:
+        array: "{{with.links}}"
+        field: "url"
+        op: "starts_with"
+        value: "{{inputs.url}}"
+
+  # 5e. Extract just the URLs
+  - id: discovered_urls
+    depends_on: [internal_link_objects]
+    with: { links: $internal_link_objects }
+    invoke:
+      tool: "nika:map"
+      params:
+        array: "{{with.links}}"
+        selector: "url"
+
+  # 5f. Find truly new URLs (not in sitemap)
+  - id: r2_new_urls
+    depends_on: [discovered_urls, all_urls]
+    with: { found: $discovered_urls, seeds: $all_urls }
+    invoke:
+      tool: "nika:set_diff"
+      params:
+        a: "{{with.found}}"
+        b: "{{with.seeds}}"
+
+  # 5f. Crawl new pages
+  - id: crawl_r2
+    description: "Round 2: crawl pages discovered from internal links"
+    depends_on: [r2_new_urls]
+    for_each: "$r2_new_urls"
+    as: page_url
+    concurrency: 5
+    fail_fast: false
+    fetch:
+      url: "{{with.page_url}}"
+      response: slim
+      extract: metadata
+      timeout: 15
+    retry:
+      max_attempts: 2
+      delay_ms: 2000
+      backoff: 2.0
+
+  # 5g. Merge R1 + R2 results
+  - id: all_results
+    depends_on: [crawl_pages, crawl_r2]
+    with: { r1: $crawl_pages, r2: $crawl_r2 }
+    invoke:
+      tool: "nika:json_merge"
+      params:
+        items: ["{{with.r1}}", "{{with.r2}}"]
+        mode: "concat"
+
+  # Remove null entries from failed crawl iterations
+  - id: valid_results
+    depends_on: [all_results]
+    with: { results: $all_results }
+    invoke:
+      tool: "nika:filter"
+      params:
+        array: "{{with.results}}"
+        field: "status"
+        op: "gte"
+        value: 0
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 6: Enrich each page (ZERO LLM — all native transforms)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: enriched_pages
+    depends_on: [valid_results]
+    with: { results: $valid_results }
+    invoke:
+      tool: "nika:enrich"
+      params:
+        array: "{{with.results}}"
+        fields:
+          locale_raw: "url | url_path | split('/') | compact | first | default('default')"
+          locale: "url | url_path | split('/') | compact | first | default('default') | regex('^[a-z]{2,3}(-[a-z]{2,4})?$') | default('default')"
+          depth: "url | url_path | split('/') | compact | length"
+          title: "extracted.title | default('')"
+          description: "extracted.description | default('')"
+          canonical: "extracted.canonical | default('')"
+          hreflang_count: "extracted.hreflang | default([]) | length"
+          is_soft_404: "extracted.title | default('') | lower | contains('not found')"
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 6: Analysis (parallel — all native, zero LLM)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: pages_by_locale
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:group_by"
+      params:
+        array: "{{with.pages}}"
+        key: "locale"
+
+  - id: stats
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:aggregate"
+      params:
+        array: "{{with.pages}}"
+        ops: ["count", "avg", "max"]
+        field: "elapsed_ms"
+
+  - id: broken_pages
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:filter"
+      params:
+        array: "{{with.pages}}"
+        field: "status"
+        op: "gte"
+        value: 400
+
+  - id: soft_404_pages
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:filter"
+      params:
+        array: "{{with.pages}}"
+        field: "is_soft_404"
+        op: "eq"
+        value: true
+
+  # Hreflang stats (native — count pages with hreflang, no LLM needed)
+  - id: hreflang_pages
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:filter"
+      params:
+        array: "{{with.pages}}"
+        field: "hreflang_count"
+        op: "gt"
+        value: 0
+
+  # Hreflang bidirectional validation (LLM — limited sample to avoid context overflow)
+  - id: hreflang_audit
+    description: "Check hreflang bidirectionality (sample of up to 50 pages)"
+    depends_on: [hreflang_pages]
+    with:
+      pages: $hreflang_pages
+    infer:
+      prompt: |
+        Analyze hreflang bidirectionality. For EACH page in the sample:
+        1. Does each target URL exist in the crawl data?
+        2. Does the target have a reciprocal hreflang back?
+        3. Does the page self-reference?
+
+        Sample pages with hreflang (up to 50):
+        {{with.pages | first(50) | pluck('url') | to_json}}
+
+        Total pages with hreflang: {{with.pages | length}}
+
+        Hreflang data for sample:
+        {{with.pages | first(50) | to_json}}
+
+        If no pages have hreflang, return total_checked: 0, valid: 0, issues: [].
+        Return ONLY the JSON. No prose.
+      temperature: 0.0
+      max_tokens: 8000
+    structured:
+      schema:
+        type: object
+        required: [total_checked, valid, issues]
+        properties:
+          total_checked: { type: integer }
+          valid: { type: integer }
+          issues:
+            type: array
+            items:
+              type: object
+              required: [url, issue_type]
+              properties:
+                url: { type: string }
+                target_url: { type: string }
+                lang: { type: string }
+                issue_type:
+                  type: string
+                  enum: [missing_return, target_not_crawled, no_self_ref]
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 7: Build sitemap JSON
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: build_sitemap
+    depends_on: [enriched_pages, pages_by_locale, stats, broken_pages,
+                 soft_404_pages, hreflang_audit, hreflang_pages]
+    with:
+      pages: $enriched_pages
+      by_locale: $pages_by_locale
+      stats: $stats
+      broken: $broken_pages
+      soft_404: $soft_404_pages
+      hreflang: $hreflang_audit
+      hreflang_pages: $hreflang_pages
+    invoke:
+      tool: "nika:json_merge"
+      params:
+        items:
+          - site:
+              base_url: "{{inputs.url}}"
+              total_pages: "{{with.pages | length}}"
+              locales: "{{with.by_locale | keys}}"
+              locale_count: "{{with.by_locale | keys | length}}"
+              hreflang_page_count: "{{with.hreflang_pages | length}}"
+          - pages: "{{with.pages}}"
+          - pages_by_locale: "{{with.by_locale}}"
+          - hreflang_audit: "{{with.hreflang}}"
+          - broken: "{{with.broken}}"
+          - soft_404: "{{with.soft_404}}"
+          - stats: "{{with.stats}}"
+        mode: "deep_merge"
+    artifact:
+      path: sitemap.json
+      format: json
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 8: Visual Artifacts (parallel, LLM-generated)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: mermaid_tree
+    depends_on: [pages_by_locale, enriched_pages]
+    with:
+      by_locale: $pages_by_locale
+      pages: $enriched_pages
+    infer:
+      prompt: |
+        Generate a Mermaid flowchart showing the site structure by locale.
+        Show the top 3 depth levels only. Group by locale.
+
+        Base URL: {{inputs.url}}
+        Total pages: {{with.pages | length}}
+        Locales: {{with.by_locale | keys | to_json}}
+        Sample pages (30): {{with.pages | first(30) | pluck('url') | to_json}}
+
+        Format:
+        ```mermaid
+        graph TD
+          root[domain] --> en[EN Np]
+          root --> fr[FR Np]
+          en --> en_cat1[/en/category 5p]
+        ```
+
+        Return ONLY the mermaid code block. Max 50 nodes.
+      temperature: 0.0
+      max_tokens: 2000
+    artifact:
+      path: site-structure.md
+      format: markdown
+
+  - id: crawl_report
+    depends_on: [stats, broken_pages, soft_404_pages, hreflang_audit,
+                 pages_by_locale, enriched_pages, hreflang_pages]
+    with:
+      stats: $stats
+      broken: $broken_pages
+      soft_404: $soft_404_pages
+      hreflang: $hreflang_audit
+      by_locale: $pages_by_locale
+      pages: $enriched_pages
+      hreflang_pages: $hreflang_pages
+    infer:
+      prompt: |
+        Generate a detailed markdown site audit report. Use ONLY the data provided.
+
+        SITE: {{inputs.url}}
+        TOTAL PAGES: {{with.pages | length}}
+        LOCALES: {{with.by_locale | keys | to_json}}
+        LOCALE COUNT: {{with.by_locale | keys | length}}
+        HREFLANG PAGES: {{with.hreflang_pages | length}}
+        STATS: {{with.stats | to_json}}
+        BROKEN ({{with.broken | length}} pages): {{with.broken | pluck('url') | to_json}}
+        SOFT 404 ({{with.soft_404 | length}} pages): {{with.soft_404 | pluck('url') | to_json}}
+        HREFLANG AUDIT: {{with.hreflang | to_json}}
+        SAMPLE PAGES (20): {{with.pages | first(20) | to_json}}
+
+        Sections:
+        1. Executive Summary — total pages, locales, health score
+        2. Locale Breakdown — table (locale, page count, % of total)
+        3. SEO Health — broken pages, soft 404s
+        4. Hreflang Audit — issues found, bidirectional check results
+        5. Performance — avg/max response time
+        6. Top 20 Deepest Pages — table from sample
+        7. Issues Summary — all broken + soft 404
+        8. Recommendations — actionable SEO improvements
+      temperature: 0.0
+      max_tokens: 6000
+    artifact:
+      path: crawl-report.md
+      format: markdown
+
+  # Generate dashboard data (TREE + GRAPH JS variables)
+  - id: dashboard_data
+    description: "Generate treemap + graph data for HTML dashboard"
+    depends_on: [pages_by_locale, enriched_pages, broken_pages, soft_404_pages]
+    with:
+      by_locale: $pages_by_locale
+      pages: $enriched_pages
+      broken: $broken_pages
+      soft_404: $soft_404_pages
+    infer:
+      prompt: |
+        Generate TWO JavaScript variable assignments for a dashboard.
+
+        Site: {{inputs.url}}
+        Total pages: {{with.pages | length}}
+        Broken: {{with.broken | length}}
+        Soft 404: {{with.soft_404 | length}}
+        Locales: {{with.by_locale | keys | to_json}}
+        Sample pages (30 URLs): {{with.pages | first(30) | pluck('url') | to_json}}
+
+        Return EXACTLY this format (no markdown, no explanation):
+
+        var TREE = {
+          name: "<domain>", total_pages: <N>, health_score: <round(100*(total-broken-soft404)/total)>,
+          children: [
+            {name: "<locale>", children: [{name: "<path_prefix>", value: <count>}]}
+          ]
+        };
+        var GRAPH = {
+          nodes: [{id: "<path>", g: "<locale>"}],
+          links: [["<from_path>", "<to_path>"]]
+        };
+
+        For TREE: group pages by locale, then by first 2 path segments. value = page count.
+        For GRAPH: include top 20 nodes (most common paths), group by locale. Infer reasonable links from URL structure.
+      temperature: 0.0
+      max_tokens: 3000
+    artifact:
+      path: tmp/dashboard-data.js
+      format: text
+
+  # Inject data into HTML template
+  - id: html_dashboard
+    description: "Build HTML dashboard with injected data"
+    depends_on: [dashboard_data]
+    with: { data_file: $dashboard_data }
+    exec:
+      command: "python3 -c \"import re; t=open('./prototypes/03-combined-dashboard.html').read(); d=open('./artifacts/tmp/dashboard-data.js').read(); out=re.sub(r'var TREE = \\{.*?^var GRAPH = \\{.*?^\\};', d, t, flags=re.DOTALL|re.MULTILINE); open('./artifacts/audit-dashboard.html','w').write(out); print('Dashboard built')\""
+      shell: true

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Structure Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+.dash{max-width:1400px;margin:0 auto;padding:20px}
+h1{font-size:1.4rem;font-weight:600;margin-bottom:16px;color:#f1f5f9}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:20px}
+.card{background:#1e2130;border:1px solid #2d3148;border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--a,#6366f1)}
+.card .l{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#94a3b8;margin-bottom:3px}
+.card .v{font-size:1.6rem;font-weight:700;color:#f1f5f9}
+.card .s{font-size:.75rem;color:#64748b;margin-top:2px}
+.tabs{display:flex;gap:6px;margin-bottom:16px}
+.tab{padding:8px 16px;border-radius:8px;border:1px solid #2d3148;background:#1a1d2e;color:#94a3b8;cursor:pointer;font-size:.8rem;transition:all .15s}
+.tab.active,.tab:hover{background:#2d3148;color:#f1f5f9;border-color:#4f46e5}
+.view{display:none;background:#1a1d2e;border:1px solid #2d3148;border-radius:12px;overflow:hidden;min-height:400px;position:relative}
+.view.active{display:block}
+/* Treemap */
+.tm-container{width:100%;height:500px;position:relative;overflow:hidden}
+.tm-cell{position:absolute;overflow:hidden;cursor:pointer;transition:opacity .15s;display:flex;align-items:flex-end;padding:4px 6px;border:1px solid rgba(15,17,23,.5)}
+.tm-cell:hover{opacity:.85;z-index:5}
+.tm-cell span{font-size:.6rem;color:rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.6);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}
+.tm-cell .cv{position:absolute;top:3px;right:5px;font-size:.55rem;opacity:.6;color:#fff}
+/* Force graph */
+canvas{width:100%;height:500px;display:block}
+/* Tooltip */
+.tip{display:none;position:fixed;background:#1e2130;border:1px solid #3d4160;border-radius:8px;padding:8px 12px;font-size:.78rem;z-index:100;box-shadow:0 6px 20px rgba(0,0,0,.5);pointer-events:none}
+.tip.show{display:block}
+.tip b{color:#f1f5f9;display:block}
+.tip i{color:#94a3b8;font-style:normal;font-size:.72rem}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.legend em{display:flex;align-items:center;gap:5px;font-size:.72rem;color:#94a3b8;font-style:normal}
+.legend em::before{content:'';width:9px;height:9px;border-radius:2px;background:var(--c)}
+</style>
+</head>
+<body>
+<div class="dash">
+  <h1 id="title">Site Structure</h1>
+  <div class="cards" id="cards"></div>
+  <div class="tabs">
+    <div class="tab active" onclick="showView('treemap')">Treemap</div>
+    <div class="tab" onclick="showView('graph')">Link Graph</div>
+  </div>
+  <div class="view active" id="v-treemap"><div class="tm-container" id="tm"></div></div>
+  <div class="view" id="v-graph"><canvas id="cv"></canvas></div>
+  <div class="legend" id="legend"></div>
+</div>
+<div class="tip" id="tip"><b></b><i></i></div>
+<script>
+// ===== DATA — Replace these two objects in your workflow =====
+var TREE = {
+  name:"example.com", total_pages:1586, health_score:98,
+  children:[
+    {name:"en",children:[{name:"/",value:42},{name:"/pricing",value:18},{name:"/blog",value:156},{name:"/docs",value:230},{name:"/api",value:87},{name:"/about",value:12},{name:"/contact",value:5},{name:"/careers",value:34},{name:"/changelog",value:67},{name:"/security",value:8}]},
+    {name:"fr",children:[{name:"/",value:38},{name:"/tarifs",value:15},{name:"/blog",value:120},{name:"/docs",value:180},{name:"/api",value:72},{name:"/a-propos",value:10},{name:"/contact",value:5},{name:"/carrieres",value:28}]},
+    {name:"de",children:[{name:"/",value:30},{name:"/preise",value:12},{name:"/blog",value:95},{name:"/docs",value:140},{name:"/api",value:60},{name:"/kontakt",value:4}]},
+    {name:"ja",children:[{name:"/",value:25},{name:"/blog",value:45},{name:"/docs",value:88},{name:"/api",value:40}]},
+    {name:"es",children:[{name:"/",value:20},{name:"/blog",value:38},{name:"/docs",value:65}]},
+    {name:"pt",children:[{name:"/",value:15},{name:"/blog",value:22},{name:"/docs",value:40}]}
+  ]
+};
+var GRAPH = {
+  nodes:[
+    {id:"/",g:"root"},{id:"/pricing",g:"mkt"},{id:"/blog",g:"cnt"},
+    {id:"/blog/ai-trends",g:"cnt"},{id:"/blog/seo-guide",g:"cnt"},
+    {id:"/docs",g:"doc"},{id:"/docs/getting-started",g:"doc"},
+    {id:"/docs/api-reference",g:"doc"},{id:"/docs/webhooks",g:"doc"},
+    {id:"/about",g:"mkt"},{id:"/contact",g:"mkt"},{id:"/careers",g:"co"},
+    {id:"/changelog",g:"prod"},{id:"/security",g:"co"},
+    {id:"/api",g:"doc"},{id:"/login",g:"auth"},{id:"/signup",g:"auth"}
+  ],
+  links:[
+    ["/","/pricing"],["/","/blog"],["/","/docs"],["/","/about"],["/","/login"],["/","/signup"],
+    ["/blog","/blog/ai-trends"],["/blog","/blog/seo-guide"],
+    ["/blog/ai-trends","/docs"],["/blog/seo-guide","/pricing"],
+    ["/docs","/docs/getting-started"],["/docs","/docs/api-reference"],["/docs","/docs/webhooks"],
+    ["/docs/getting-started","/docs/api-reference"],
+    ["/about","/contact"],["/about","/careers"],
+    ["/pricing","/signup"],["/changelog","/docs"],["/api","/docs/api-reference"],
+    ["/login","/signup"],["/careers","/about"],["/security","/docs"]
+  ]
+};
+// ===== END DATA =====
+
+var P=['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
+var GC={root:'#f59e0b',mkt:'#6366f1',cnt:'#10b981',doc:'#06b6d4',co:'#8b5cf6',prod:'#ec4899',auth:'#ef4444'};
+var tip=document.getElementById('tip'), tipB=tip.children[0], tipI=tip.children[1];
+
+function showTip(x,y,t,s){tipB.textContent=t;tipI.textContent=s;tip.classList.add('show');tip.style.left=(x+12)+'px';tip.style.top=(y-36)+'px'}
+function hideTip(){tip.classList.remove('show')}
+
+// === CARDS ===
+(function(){
+  var d=TREE, el=document.getElementById('cards');
+  var tp=d.total_pages||0, lc=d.children.length, h=d.health_score||100;
+  var items=[
+    {l:'Total Pages',v:tp.toLocaleString(),a:'#6366f1'},
+    {l:'Locales',v:lc,a:'#06b6d4'},
+    {l:'Health',v:h+'%',s:h>=95?'Excellent':h>=80?'Good':'Needs work',a:h>=95?'#10b981':'#f59e0b'},
+    {l:'Domain',v:d.name,a:'#8b5cf6'}
+  ];
+  items.forEach(function(c){
+    var card=document.createElement('div');card.className='card';card.style.setProperty('--a',c.a);
+    var l=document.createElement('div');l.className='l';l.textContent=c.l;
+    var v=document.createElement('div');v.className='v';v.textContent=c.v;
+    card.appendChild(l);card.appendChild(v);
+    if(c.s){var s=document.createElement('div');s.className='s';s.textContent=c.s;card.appendChild(s)}
+    el.appendChild(card);
+  });
+  document.getElementById('title').textContent=d.name+' — Site Structure';
+})();
+
+// === SQUARIFIED TREEMAP (vanilla, proper algorithm) ===
+(function(){
+  var container=document.getElementById('tm');
+  var W=container.clientWidth||1200, H=container.clientHeight||500;
+  // Flatten: [{name, value, locale, color}]
+  var flat=[], total=0;
+  TREE.children.forEach(function(loc,i){
+    loc.children.forEach(function(pg){
+      flat.push({name:pg.name,value:pg.value,locale:loc.name,color:P[i%P.length]});
+      total+=pg.value;
+    });
+  });
+  flat.sort(function(a,b){return b.value-a.value});
+
+  // Squarify algorithm
+  function squarify(items,x,y,w,h){
+    if(!items.length)return;
+    if(items.length===1){
+      lay(items[0],x,y,w,h);return;
+    }
+    var total=items.reduce(function(s,i){return s+i.value},0);
+    var horiz=w>=h;
+    var mainDim=horiz?h:w;
+    var row=[items[0]], rowSum=items[0].value;
+    var best=worst(row,rowSum,mainDim,total);
+    for(var i=1;i<items.length;i++){
+      var nRow=row.concat(items[i]), nSum=rowSum+items[i].value;
+      var nWorst=worst(nRow,nSum,mainDim,total);
+      if(nWorst<=best){row=nRow;rowSum=nSum;best=nWorst}
+      else break;
+    }
+    var rowFrac=rowSum/total;
+    var rowSize=horiz?w*rowFrac:h*rowFrac;
+    var off=0;
+    row.forEach(function(item){
+      var frac=item.value/rowSum;
+      var cellSize=mainDim*frac;
+      if(horiz) lay(item,x,y+off,rowSize,cellSize);
+      else lay(item,x+off,y,cellSize,rowSize);
+      off+=cellSize;
+    });
+    var rest=items.slice(row.length);
+    if(horiz) squarify(rest,x+rowSize,y,w-rowSize,h);
+    else squarify(rest,x,y+rowSize,w,h-rowSize);
+  }
+  function worst(row,rowSum,side,total){
+    var rowFrac=rowSum/total;
+    var s=side;
+    var r2=rowSum*rowSum;
+    var mx=0,mn=Infinity;
+    row.forEach(function(i){if(i.value>mx)mx=i.value;if(i.value<mn)mn=i.value});
+    var a=s*s*mx/r2, b=r2/(s*s*mn);
+    return Math.max(a,b);
+  }
+  function lay(item,x,y,w,h){
+    var el=document.createElement('div');
+    el.className='tm-cell';
+    el.style.left=x+'px';el.style.top=y+'px';el.style.width=Math.max(0,w-1)+'px';el.style.height=Math.max(0,h-1)+'px';
+    // Color with slight variation based on value
+    var brightness=20+Math.min(30,item.value/3);
+    el.style.background='color-mix(in srgb,'+item.color+' '+brightness+'%,#1e2130)';
+    if(w>35&&h>20){var sp=document.createElement('span');sp.textContent=item.name;el.appendChild(sp)}
+    if(w>50&&h>28){var cv=document.createElement('span');cv.className='cv';cv.textContent=item.value;el.appendChild(cv)}
+    el.addEventListener('mouseenter',function(e){showTip(e.clientX,e.clientY,'/'+item.locale+item.name,item.value+' pages')});
+    el.addEventListener('mousemove',function(e){showTip(e.clientX,e.clientY,'/'+item.locale+item.name,item.value+' pages')});
+    el.addEventListener('mouseleave',hideTip);
+    container.appendChild(el);
+  }
+  squarify(flat,0,0,W,H);
+})();
+
+// === LEGEND ===
+(function(){
+  var el=document.getElementById('legend');
+  TREE.children.forEach(function(loc,i){
+    var em=document.createElement('em');
+    em.style.setProperty('--c',P[i%P.length]);
+    var count=loc.children.reduce(function(s,p){return s+p.value},0);
+    em.appendChild(document.createTextNode(loc.name+' ('+count+')'));
+    el.appendChild(em);
+  });
+})();
+
+// === FORCE GRAPH (canvas) ===
+(function(){
+  var cv=document.getElementById('cv');
+  var ctx=cv.getContext('2d');
+  var W,H,dpr;
+  function resize(){
+    dpr=window.devicePixelRatio||1;
+    var rect=cv.parentElement.getBoundingClientRect();
+    W=rect.width;H=500;
+    cv.width=W*dpr;cv.height=H*dpr;
+    cv.style.width=W+'px';cv.style.height=H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resize();window.addEventListener('resize',resize);
+
+  var nodes=GRAPH.nodes.map(function(n){return{id:n.id,g:n.g,x:W/2+(Math.random()-.5)*300,y:H/2+(Math.random()-.5)*200,vx:0,vy:0,lc:0}});
+  var nm={};nodes.forEach(function(n){nm[n.id]=n});
+  var links=GRAPH.links.map(function(l){return{s:nm[l[0]],t:nm[l[1]]}});
+  links.forEach(function(l){l.s.lc++;l.t.lc++});
+
+  var SL=70,SK=.01,REP=2500,DMP=.88,CK=.003;
+  var camX=0,camY=0,camS=1,dragN=null,panOn=false,ps={x:0,y:0};
+
+  function tw(sx,sy){return[(sx-W/2)/camS-camX,(sy-H/2)/camS-camY]}
+  function sim(){
+    for(var i=0;i<nodes.length;i++)for(var j=i+1;j<nodes.length;j++){
+      var a=nodes[i],b=nodes[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
+      var f=REP/(d*d),fx=dx/d*f,fy=dy/d*f;
+      a.vx-=fx;a.vy-=fy;b.vx+=fx;b.vy+=fy;
+    }
+    links.forEach(function(l){
+      var dx=l.t.x-l.s.x,dy=l.t.y-l.s.y,d=Math.sqrt(dx*dx+dy*dy)||1;
+      var f=(d-SL)*SK;l.s.vx+=dx/d*f;l.s.vy+=dy/d*f;l.t.vx-=dx/d*f;l.t.vy-=dy/d*f;
+    });
+    nodes.forEach(function(n){
+      if(n.drag)return;
+      n.vx+=(W/2-n.x)*CK;n.vy+=(H/2-n.y)*CK;
+      n.vx*=DMP;n.vy*=DMP;n.x+=n.vx;n.y+=n.vy;
+    });
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(W/2,H/2);ctx.scale(camS,camS);ctx.translate(camX,camY);
+    ctx.lineWidth=1/camS;ctx.strokeStyle='rgba(100,116,139,.2)';
+    links.forEach(function(l){ctx.beginPath();ctx.moveTo(l.s.x,l.s.y);ctx.lineTo(l.t.x,l.t.y);ctx.stroke()});
+    nodes.forEach(function(n){
+      var r=Math.max(4,Math.sqrt(n.lc)*3.5),c=GC[n.g]||'#6366f1';
+      ctx.shadowColor=c;ctx.shadowBlur=10;ctx.fillStyle=c;
+      ctx.beginPath();ctx.arc(n.x,n.y,r,0,6.28);ctx.fill();ctx.shadowBlur=0;
+      if(camS>.5||n.g==='root'){ctx.fillStyle='#e2e8f0';ctx.font=(10/camS)+'px system-ui';ctx.textAlign='center';ctx.fillText(n.id,n.x,n.y-r-4/camS)}
+    });
+    ctx.restore();
+  }
+  function tick(){sim();draw();requestAnimationFrame(tick)}
+
+  cv.addEventListener('mousedown',function(e){
+    var rect=cv.getBoundingClientRect();
+    var p=tw(e.clientX-rect.left,e.clientY-rect.top);
+    var best=null,bd=18/camS;
+    nodes.forEach(function(n){var d=Math.sqrt((n.x-p[0])**2+(n.y-p[1])**2);if(d<bd){bd=d;best=n}});
+    if(best){dragN=best;dragN.drag=true}else{panOn=true;ps={x:e.clientX,y:e.clientY}}
+  });
+  cv.addEventListener('mousemove',function(e){
+    var rect=cv.getBoundingClientRect();
+    if(dragN){var p=tw(e.clientX-rect.left,e.clientY-rect.top);dragN.x=p[0];dragN.y=p[1];dragN.vx=0;dragN.vy=0}
+    else if(panOn){camX+=(e.clientX-ps.x)/camS;camY+=(e.clientY-ps.y)/camS;ps={x:e.clientX,y:e.clientY}}
+    else{
+      var p=tw(e.clientX-rect.left,e.clientY-rect.top);
+      var best=null,bd=18/camS;
+      nodes.forEach(function(n){var d=Math.sqrt((n.x-p[0])**2+(n.y-p[1])**2);if(d<bd){bd=d;best=n}});
+      if(best)showTip(e.clientX,e.clientY,best.id,best.lc+' connections');else hideTip();
+    }
+  });
+  cv.addEventListener('mouseup',function(){if(dragN)dragN.drag=false;dragN=null;panOn=false});
+  cv.addEventListener('mouseleave',function(){if(dragN)dragN.drag=false;dragN=null;panOn=false;hideTip()});
+  cv.addEventListener('wheel',function(e){e.preventDefault();camS=Math.max(.2,Math.min(5,camS*(e.deltaY>0?.92:1.08)))},{passive:false});
+  tick();
+})();
+
+// === TABS ===
+function showView(name){
+  document.querySelectorAll('.view').forEach(function(v){v.classList.remove('active')});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+  document.getElementById('v-'+name).classList.add('active');
+  var tabs=document.querySelectorAll('.tab');
+  if(name==='treemap')tabs[0].classList.add('active');else tabs[1].classList.add('active');
+}
+</script>
+</body>
+</html>
