@@ -692,25 +692,11 @@ tasks:
       path: tmp/dashboard-data.js
       format: text
 
-  # Dashboard step 2: inject data into proven template (treemap + force graph always work)
+  # Dashboard step 2: inject LLM data into proven HTML template
+  # awk replaces everything between DATA markers with the generated JS
   - id: html_dashboard
-    description: "Inject data into fixed HTML template — reliable treemap + force graph"
+    description: "Inject data into fixed HTML template"
     depends_on: [dashboard_data]
     exec:
-      command: >-
-        python3 -c "
-        import re
-        tpl = open('./templates/dashboard.html').read()
-        data = open('./artifacts/tmp/dashboard-data.js').read()
-        marker_start = '// ===== DATA'
-        marker_end = '// ===== END DATA ====='
-        i = tpl.find(marker_start)
-        j = tpl.find(marker_end)
-        if i >= 0 and j >= 0:
-            out = tpl[:i] + data + '\n' + tpl[j:]
-            open('./artifacts/audit-dashboard.html', 'w').write(out)
-            print('Dashboard built — template + injected data')
-        else:
-            print('ERROR: markers not found in template')
-        "
+      command: "awk '/\\/\\/ ===== END DATA/{skip=0} !skip{print} /\\/\\/ ===== DATA/{skip=1; while((getline line < \"./artifacts/tmp/dashboard-data.js\")>0) print line}' ./templates/dashboard.html > ./artifacts/audit-dashboard.html && echo 'Dashboard built'"
       shell: true
