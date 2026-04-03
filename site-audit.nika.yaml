@@ -506,55 +506,47 @@ tasks:
       format: markdown
 
   # Generate dashboard data (TREE + GRAPH JS variables)
-  - id: dashboard_data
-    description: "Generate treemap + graph data for HTML dashboard"
-    depends_on: [pages_by_locale, enriched_pages, broken_pages, soft_404_pages]
+  - id: html_dashboard
+    description: "Generate self-contained HTML dashboard"
+    depends_on: [pages_by_locale, enriched_pages, broken_pages, soft_404_pages, stats]
     with:
       by_locale: $pages_by_locale
       pages: $enriched_pages
       broken: $broken_pages
       soft_404: $soft_404_pages
+      stats: $stats
     infer:
       prompt: |
-        Generate TWO JavaScript variable assignments for an interactive dashboard.
+        Generate a COMPLETE self-contained HTML dashboard file for a site audit.
 
-        Site: {{inputs.url}}
-        Total pages: {{with.pages | length}}
-        Broken: {{with.broken | length}}
-        Soft 404: {{with.soft_404 | length}}
-        Health score: compute round(100 * (total - broken - soft404) / total)
+        SITE DATA:
+        - Domain: {{inputs.url}}
+        - Total pages: {{with.pages | length}}
+        - Broken: {{with.broken | length}}
+        - Soft 404: {{with.soft_404 | length}}
+        - Avg response: {{with.stats.avg}}ms
+        - Locales ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
+        - Sample URLs (50): {{with.pages | first(50) | pluck('url') | to_json}}
 
-        ALL LOCALES with page counts:
-        {{with.by_locale | keys | to_json}}
-        Total locales: {{with.by_locale | keys | length}}
+        REQUIREMENTS:
+        1. Dark theme (#0f1117 background, #e2e8f0 text)
+        2. Top cards: Total Pages, Locales count, Health % (green if >=95), Domain
+        3. Tabs: "Treemap" and "Link Graph"
+        4. Treemap: squarified layout, one color per locale, cells show path + count
+        5. Link Graph: canvas force-directed graph with draggable nodes, zoom with wheel
+        6. Legend showing locale colors
+        7. Tooltip on hover for both views
 
-        Sample pages per locale (3 per locale, to see URL patterns):
-        {{with.pages | first(100) | pluck('url') | to_json}}
+        The TREE data must have one child per locale with sub-children grouped by URL path section.
+        Distribute {{with.pages | length}} pages across {{with.by_locale | keys | length}} locales.
+        Each locale gets approximately {{with.pages | length}} / {{with.by_locale | keys | length}} pages.
 
-        INSTRUCTIONS:
-        1. var TREE: Create one child per locale. For each locale, create sub-children
-           by grouping the locale's pages by their second URL path segment (after the locale prefix).
-           value = estimated page count. Distribute total pages evenly across locales if exact counts unknown.
+        The GRAPH data should have ~30 nodes (top URL paths) and ~40 links showing navigation.
 
-        2. var GRAPH: Create nodes for the top 30 most important URL paths (homepage, main sections).
-           Each node has id (path) and g (group: use locale code).
-           Create links array with [source_path, target_path] pairs showing site navigation structure.
-
-        Return ONLY the two var assignments. No markdown. No explanation.
-        Format:
-        var TREE = { name: "domain", total_pages: N, health_score: N, children: [{name: "locale", children: [{name: "section", value: N}]}] };
-        var GRAPH = { nodes: [{id: "/path", g: "group"}], links: [["/from", "/to"]] };
+        Return the COMPLETE HTML file (<!DOCTYPE html> to </html>). No markdown fences.
+        All CSS inline in <style>, all JS inline in <script>. Self-contained, zero external deps.
       temperature: 0.3
       max_tokens: 16000
     artifact:
-      path: tmp/dashboard-data.js
+      path: audit-dashboard.html
       format: text
-
-  # Inject data into HTML template
-  - id: html_dashboard
-    description: "Build HTML dashboard with injected data"
-    depends_on: [dashboard_data]
-    with: { data_file: $dashboard_data }
-    exec:
-      command: "python3 -c \"import re; t=open('./prototypes/03-combined-dashboard.html').read(); d=open('./artifacts/tmp/dashboard-data.js').read(); out=re.sub(r'var TREE = \\{.*?^var GRAPH = \\{.*?^\\};', d, t, flags=re.DOTALL|re.MULTILINE); open('./artifacts/audit-dashboard.html','w').write(out); print('Dashboard built')\""
-      shell: true
