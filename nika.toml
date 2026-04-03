@@ -4,7 +4,7 @@ description = "Full site audit workflow — crawl, enrich, analyze, report"
 
 [provider]
 default = "openai"
-model = "gpt-4.1-mini"
+model = "gpt-5.2"
 
 [tools]
 allow_exec = true

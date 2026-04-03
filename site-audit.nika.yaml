@@ -2,7 +2,7 @@ schema: nika/workflow@0.12
 workflow: site-audit-v9
 description: "Full site audit — pages, locales, hreflang, visual artifacts. Zero python."
 provider: openai
-model: gpt-4.1-mini
+model: gpt-5.2
 
 artifacts:
   dir: ./artifacts
@@ -516,32 +516,36 @@ tasks:
       soft_404: $soft_404_pages
     infer:
       prompt: |
-        Generate TWO JavaScript variable assignments for a dashboard.
+        Generate TWO JavaScript variable assignments for an interactive dashboard.
 
         Site: {{inputs.url}}
         Total pages: {{with.pages | length}}
         Broken: {{with.broken | length}}
         Soft 404: {{with.soft_404 | length}}
-        Locales: {{with.by_locale | keys | to_json}}
-        Sample pages (30 URLs): {{with.pages | first(30) | pluck('url') | to_json}}
+        Health score: compute round(100 * (total - broken - soft404) / total)
 
-        Return EXACTLY this format (no markdown, no explanation):
+        ALL LOCALES with page counts:
+        {{with.by_locale | keys | to_json}}
+        Total locales: {{with.by_locale | keys | length}}
 
-        var TREE = {
-          name: "<domain>", total_pages: <N>, health_score: <round(100*(total-broken-soft404)/total)>,
-          children: [
-            {name: "<locale>", children: [{name: "<path_prefix>", value: <count>}]}
-          ]
-        };
-        var GRAPH = {
-          nodes: [{id: "<path>", g: "<locale>"}],
-          links: [["<from_path>", "<to_path>"]]
-        };
+        Sample pages per locale (3 per locale, to see URL patterns):
+        {{with.pages | first(100) | pluck('url') | to_json}}
 
-        For TREE: group pages by locale, then by first 2 path segments. value = page count.
-        For GRAPH: include top 20 nodes (most common paths), group by locale. Infer reasonable links from URL structure.
-      temperature: 0.0
-      max_tokens: 3000
+        INSTRUCTIONS:
+        1. var TREE: Create one child per locale. For each locale, create sub-children
+           by grouping the locale's pages by their second URL path segment (after the locale prefix).
+           value = estimated page count. Distribute total pages evenly across locales if exact counts unknown.
+
+        2. var GRAPH: Create nodes for the top 30 most important URL paths (homepage, main sections).
+           Each node has id (path) and g (group: use locale code).
+           Create links array with [source_path, target_path] pairs showing site navigation structure.
+
+        Return ONLY the two var assignments. No markdown. No explanation.
+        Format:
+        var TREE = { name: "domain", total_pages: N, health_score: N, children: [{name: "locale", children: [{name: "section", value: N}]}] };
+        var GRAPH = { nodes: [{id: "/path", g: "group"}], links: [["/from", "/to"]] };
+      temperature: 0.3
+      max_tokens: 16000
     artifact:
       path: tmp/dashboard-data.js
       format: text
