@@ -33,6 +33,7 @@ tasks:
     fetch:
       url: "{{inputs.url}}/llms.txt"
       response: slim
+      extract: text
       timeout: 10
 
   # ═════════════════════════════════════════════════════════════════════
@@ -431,11 +432,11 @@ tasks:
       prompt: |
         Perform a GEO (Generative Engine Optimization) audit.
 
-        ROBOTS.TXT:
-        {{with.robots.extracted | default('Not found')}}
+        ROBOTS.TXT (status {{with.robots.status | default(0)}}):
+        {{with.robots.extracted | default('Not found — no robots.txt')}}
 
-        LLMS.TXT:
-        {{with.llmstxt.status}} — {{with.llmstxt.extracted | default('Not found')}}
+        LLMS.TXT (status {{with.llmstxt.status | default(0)}}):
+        {{with.llmstxt.extracted | default('Not found — no llms.txt file')}}
 
         Sample page titles (20):
         {{with.pages | first(20) | pluck('title') | to_json}}
@@ -513,7 +514,7 @@ tasks:
 
   - id: build_sitemap
     depends_on: [enriched_pages, pages_by_locale, stats, broken_pages,
-                 soft_404_pages, hreflang_audit, hreflang_pages, geo_analysis]
+                 soft_404_pages, hreflang_audit, hreflang_pages]
     with:
       pages: $enriched_pages
       by_locale: $pages_by_locale
@@ -522,7 +523,6 @@ tasks:
       soft_404: $soft_404_pages
       hreflang: $hreflang_audit
       hreflang_pages: $hreflang_pages
-      geo: $geo_analysis
     invoke:
       tool: "nika:json_merge"
       params:
@@ -536,7 +536,6 @@ tasks:
           - pages: "{{with.pages}}"
           - pages_by_locale: "{{with.by_locale}}"
           - hreflang_audit: "{{with.hreflang}}"
-          - geo_audit: "{{with.geo}}"
           - broken: "{{with.broken}}"
           - soft_404: "{{with.soft_404}}"
           - stats: "{{with.stats}}"
