@@ -174,7 +174,7 @@ function hideTip(){tip.classList.remove('show')}
     el.className='tm-cell';
     el.style.left=x+'px';el.style.top=y+'px';el.style.width=Math.max(0,w-1)+'px';el.style.height=Math.max(0,h-1)+'px';
     // Color with slight variation based on value
-    var brightness=20+Math.min(30,item.value/3);
+    var brightness=40+Math.min(40,item.value/2);
     el.style.background='color-mix(in srgb,'+item.color+' '+brightness+'%,#1e2130)';
     if(w>35&&h>20){var sp=document.createElement('span');sp.textContent=item.name;el.appendChild(sp)}
     if(w>50&&h>28){var cv=document.createElement('span');cv.className='cv';cv.textContent=item.value;el.appendChild(cv)}
@@ -215,7 +215,7 @@ function hideTip(){tip.classList.remove('show')}
 
   var nodes=GRAPH.nodes.map(function(n){return{id:n.id,g:n.g,x:W/2+(Math.random()-.5)*300,y:H/2+(Math.random()-.5)*200,vx:0,vy:0,lc:0}});
   var nm={};nodes.forEach(function(n){nm[n.id]=n});
-  var links=GRAPH.links.map(function(l){return{s:nm[l[0]],t:nm[l[1]]}});
+  var links=GRAPH.links.map(function(l){return{s:nm[l[0]],t:nm[l[1]]}}).filter(function(l){return l.s&&l.t});
   links.forEach(function(l){l.s.lc++;l.t.lc++});
 
   var SL=70,SK=.01,REP=2500,DMP=.88,CK=.003;
