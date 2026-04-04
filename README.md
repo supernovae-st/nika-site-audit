@@ -13,7 +13,7 @@ brew install supernovae-st/tap/nika
 nika --version   # requires v0.65.1+
 ```
 
-> **Minimum version: v0.65.1** (current stable). Uses `nika:jq`, `nika:tree_data`, `nika:inject`, encrypted vault, `$binding ?? fallback`. Older versions will fail.
+> **Minimum version: v0.65.1** (current brew stable). Recommended: **v0.67.0+** for `| shell` security, jaq 3.0, improved error messages. Uses `nika:jq`, `nika:tree_data`, `nika:inject`, encrypted vault, `$binding ?? fallback`.
 
 <details>
 <summary>Other install methods (Linux, Intel Mac, source)</summary>
