@@ -770,7 +770,8 @@ tasks:
     invoke:
       tool: "nika:read"
       params:
-        path: "./artifacts/tmp/dashboard-data.js"
+        file_path: "./artifacts/tmp/dashboard-data.js"
+        raw: true
 
   - id: html_dashboard
     description: "Inject data variables into dashboard HTML template"
