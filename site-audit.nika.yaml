@@ -651,54 +651,126 @@ tasks:
       format: markdown
 
   # ═════════════════════════════════════════════════════════════════════
-  # LAYER 8b: Dashboard data (deterministic — zero LLM, exact counts)
-  # exec jq for complex nested grouping, nika:write for JS output
+  # LAYER 8b: Dashboard data (100% native — zero exec, zero LLM)
+  # nika:tree_data + nika:jq replace external jq/awk commands
   # ═════════════════════════════════════════════════════════════════════
 
-  - id: write_pages_json
-    description: "Cache enriched pages for deterministic processing"
+  - id: build_tree_children
+    description: "Treemap hierarchy — native nested group_by (exact counts)"
     depends_on: [enriched_pages]
     with: { pages: $enriched_pages }
     invoke:
-      tool: "nika:write"
+      tool: "nika:tree_data"
       params:
-        file_path: ".nika/cache/enriched-pages.json"
-        content: "{{with.pages | to_json}}"
-        overwrite: true
+        array: "{{with.pages}}"
+        group_by: "locale"
+        sub_group_by: "section"
+        name_prefix: "/"
+        sort: "desc"
 
   - id: build_tree
-    description: "Treemap hierarchy — exact counts per locale/section"
-    depends_on: [write_pages_json, broken_pages, soft_404_pages]
+    description: "Wrap tree children with domain metadata"
+    depends_on: [build_tree_children, enriched_pages, broken_pages, soft_404_pages]
     with:
+      children: $build_tree_children
+      pages: $enriched_pages
       broken: $broken_pages
       soft_404: $soft_404_pages
-    exec:
-      command: "jq --arg domain '{{inputs.url | url_host}}' --argjson broken '{{with.broken | length}}' --argjson soft '{{with.soft_404 | length}}' '{name: $domain, total_pages: length, health_score: (((length - $broken - $soft) * 100 / ([length, 1] | max)) | round), children: [group_by(.locale)[] | {name: .[0].locale, children: [group_by(.section)[] | {name: (\"/\" + .[0].section), value: length}] | sort_by(-.value)}] | sort_by(-(.children | map(.value) | add))}' .nika/cache/enriched-pages.json"
-      shell: true
+    invoke:
+      tool: "nika:jq"
+      params:
+        data:
+          name: "{{inputs.url | url_host}}"
+          total_pages: "{{with.pages | length}}"
+          broken_count: "{{with.broken | length}}"
+          soft_404_count: "{{with.soft_404 | length}}"
+          children: "{{with.children}}"
+        expr: ". + {health_score: ((((.total_pages - .broken_count - .soft_404_count) * 100) / ([.total_pages, 1] | max)) | round)}"
 
   - id: build_graph
     description: "Force graph — nodes from URL paths, edges from hierarchy"
-    depends_on: [write_pages_json]
-    exec:
-      command: "jq --arg base '{{inputs.url}}' '[.[] | .url | ltrimstr($base) | if . == \"\" or . == \"/\" then \"/\" else rtrimstr(\"/\") end] | unique | .[0:80] | . as $paths | {nodes: [$paths[] | {id: ., g: (if . == \"/\" then \"root\" elif test(\"^/(docs?|api|reference|guides?|learn|tutorials?|examples?|faq|handbook|getting-started|changelog|attributes?|specs?|schemas?)(/|$)\") then \"doc\" elif test(\"^/(blog|news|articles?|posts?|essays|stories|interviews|updates|press|newsletter|talks?)(/|$)\") then \"cnt\" elif test(\"^/(about|contact|careers|legal|terms|privacy|team|company|imprint|jobs|lore|webring)(/|$)\") then \"co\" elif test(\"^/(pricing|features|solutions|enterprise|plans|tarifs|preise)(/|$)\") then \"mkt\" elif test(\"^/(app|dashboard|console|product|tools|extensions|plugins|integrations|packages?)(/|$)\") then \"prod\" elif test(\"^/(login|sign-?up|register|auth|account|profile|settings|sso)(/|$)\") then \"auth\" else \"cnt\" end)}], links: [$paths[] | select(. != \"/\") | . as $child | ($child | split(\"/\") | if .[-1] == \"\" then .[:-1] else . end | .[:-1] | join(\"/\") | if . == \"\" then \"/\" else . end) as $parent | select([$paths[] | select(. == $parent)] | length > 0) | [$parent, $child]]}' .nika/cache/enriched-pages.json"
-      shell: true
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:jq"
+      params:
+        data: "{{with.pages}}"
+        expr: |
+          [.[] | .url | split("//") | if length > 1 then (.[1] | split("/") | .[1:] | join("/") | "/" + .) else . end | if . == "" or . == "/" then "/" else rtrimstr("/") end] | unique | .[0:80] | . as $paths | {nodes: [$paths[] | {id: ., g: (if . == "/" then "root" elif test("^/(docs?|api|reference|guides?|learn|tutorials?|examples?|faq|handbook|getting-started|changelog|attributes?|specs?|schemas?)(/|$)") then "doc" elif test("^/(blog|news|articles?|posts?|essays|stories|interviews|updates|press|newsletter|talks?)(/|$)") then "cnt" elif test("^/(about|contact|careers|legal|terms|privacy|team|company|imprint|jobs|lore|webring)(/|$)") then "co" elif test("^/(pricing|features|solutions|enterprise|plans|tarifs|preise)(/|$)") then "mkt" elif test("^/(app|dashboard|console|product|tools|extensions|plugins|integrations|packages?)(/|$)") then "prod" elif test("^/(login|sign-?up|register|auth|account|profile|settings|sso)(/|$)") then "auth" else "cnt" end)}], links: [$paths[] | select(. != "/") | . as $child | ($child | split("/") | if .[-1] == "" then .[:-1] else . end | .[:-1] | join("/") | if . == "" then "/" else . end) as $parent | select([$paths[] | select(. == $parent)] | length > 0) | [$parent, $child]]}
+
+  - id: slim_pages
+    description: "Slim page list for dashboard table (drop heavy sub-objects)"
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:jq"
+      params:
+        data: "{{with.pages}}"
+        expr: "[.[] | {url, status, title, locale, section, depth, elapsed_ms}]"
+
+  - id: dashboard_stats
+    description: "Compute dashboard stats (status distribution, depths, crawlers)"
+    depends_on: [enriched_pages, broken_pages, soft_404_pages, fetch_robots]
+    with:
+      pages: $enriched_pages
+      broken: $broken_pages
+      soft_404: $soft_404_pages
+      robots: $fetch_robots
+    invoke:
+      tool: "nika:jq"
+      params:
+        data:
+          pages: "{{with.pages}}"
+          broken_count: "{{with.broken | length}}"
+          soft_404_count: "{{with.soft_404 | length}}"
+          robots_txt: "{{with.robots | default('')}}"
+        expr: |
+          .pages | length as $total |
+          [.pages[] | .status // 200] | group_by(. / 100 | floor) |
+          map({(.[0] / 100 | floor | tostring + "xx"): length}) | add // {} |
+          . as $status_map |
+          {
+            health_score: (((($total - .broken_count - .soft_404_count) * 100) / ([$total, 1] | max)) | round),
+            status: {
+              ok: ($status_map["2xx"] // 0),
+              redirect: ($status_map["3xx"] // 0),
+              error: ($status_map["4xx"] // 0),
+              server_error: ($status_map["5xx"] // 0)
+            },
+            depths: ([.pages[] | .depth // 0 | tostring] | group_by(.) | map({(.[0]): length}) | add // {}),
+            crawlers: {
+              Googlebot: (.robots_txt | test("Googlebot") | not),
+              Bingbot: (.robots_txt | test("Bingbot") | not),
+              GPTBot: (.robots_txt | test("GPTBot") | not),
+              ClaudeBot: (.robots_txt | test("ClaudeBot") | not)
+            }
+          }
 
   - id: write_dashboard_js
-    description: "Format TREE + GRAPH as JavaScript for dashboard"
-    depends_on: [build_tree, build_graph]
+    description: "Write all dashboard data as JavaScript variables"
+    depends_on: [build_tree, build_graph, crawl_report, slim_pages, dashboard_stats]
     with:
       tree: $build_tree
       graph: $build_graph
+      report: $crawl_report
+      pages: $slim_pages
+      stats: $dashboard_stats
     invoke:
       tool: "nika:write"
       params:
         file_path: "artifacts/tmp/dashboard-data.js"
-        content: "var TREE = {{with.tree | to_json}};\nvar GRAPH = {{with.graph | to_json}};"
+        content: |
+          var TREE = {{with.tree | to_json}};
+          var GRAPH = {{with.graph | to_json}};
+          var REPORT = {{with.report | to_json}};
+          var PAGES = {{with.pages | to_json}};
+          var STATS = {{with.stats | to_json}};
+          var CHART = "";
         overwrite: true
 
   - id: html_dashboard
-    description: "Inject data into dashboard HTML template"
+    description: "Inject data variables into dashboard HTML template"
     depends_on: [write_dashboard_js]
     exec:
-      command: "awk '/\\/\\/ ===== END DATA/{skip=0} !skip{print} /\\/\\/ ===== DATA/{skip=1; while((getline line < \"./artifacts/tmp/dashboard-data.js\")>0) print line}' ./templates/dashboard.html > ./artifacts/audit-dashboard.html && echo 'Dashboard built'"
+      command: "awk '/\\/\\/ CONSTANTS & HELPERS/{skip=0} !skip{print} /\\/\\/ DATA —/{skip=1; while((getline line < \"./artifacts/tmp/dashboard-data.js\")>0) print line; print \"\"}' ./templates/dashboard.html > ./artifacts/audit-dashboard.html"
       shell: true
