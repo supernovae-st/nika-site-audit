@@ -696,7 +696,7 @@ tasks:
       params:
         data: "{{with.pages}}"
         expr: |
-          [.[] | .url | split("//") | if length > 1 then (.[1] | split("/") | .[1:] | join("/") | "/" + .) else . end | if . == "" or . == "/" then "/" else rtrimstr("/") end] | unique | .[0:80] | . as $paths | {nodes: [$paths[] | {id: ., g: (if . == "/" then "root" elif test("^/(docs?|api|reference|guides?|learn|tutorials?|examples?|faq|handbook|getting-started|changelog|attributes?|specs?|schemas?)(/|$)") then "doc" elif test("^/(blog|news|articles?|posts?|essays|stories|interviews|updates|press|newsletter|talks?)(/|$)") then "cnt" elif test("^/(about|contact|careers|legal|terms|privacy|team|company|imprint|jobs|lore|webring)(/|$)") then "co" elif test("^/(pricing|features|solutions|enterprise|plans|tarifs|preise)(/|$)") then "mkt" elif test("^/(app|dashboard|console|product|tools|extensions|plugins|integrations|packages?)(/|$)") then "prod" elif test("^/(login|sign-?up|register|auth|account|profile|settings|sso)(/|$)") then "auth" else "cnt" end)}], links: [$paths[] | select(. != "/") | . as $child | ($child | split("/") | if .[-1] == "" then .[:-1] else . end | .[:-1] | join("/") | if . == "" then "/" else . end) as $parent | select([$paths[] | select(. == $parent)] | length > 0) | [$parent, $child]]}
+          [.[] | .url | strings | split("//") | if length > 1 then (.[1] | split("/") | .[1:] | join("/") | "/" + .) else . end | if . == "" or . == "/" then "/" else rtrimstr("/") end] | unique | .[0:80] | . as $paths | {nodes: [$paths[] | . as $p | {id: $p, g: (if $p == "/" then "root" elif ($p | try test("^/(docs?|api|reference|guides?|learn|tutorials?|examples?|faq|handbook|getting-started|changelog|attributes?|specs?|schemas?)(/|$)") catch false) then "doc" elif ($p | try test("^/(blog|news|articles?|posts?|essays|stories|interviews|updates|press|newsletter|talks?)(/|$)") catch false) then "cnt" elif ($p | try test("^/(about|contact|careers|legal|terms|privacy|team|company|imprint|jobs|lore|webring)(/|$)") catch false) then "co" elif ($p | try test("^/(pricing|features|solutions|enterprise|plans|tarifs|preise)(/|$)") catch false) then "mkt" elif ($p | try test("^/(app|dashboard|console|product|tools|extensions|plugins|integrations|packages?)(/|$)") catch false) then "prod" elif ($p | try test("^/(login|sign-?up|register|auth|account|profile|settings|sso)(/|$)") catch false) then "auth" else "cnt" end)}], links: [$paths[] | select(. != "/") | . as $child | ($child | split("/") | if .[-1] == "" then .[:-1] else . end | .[:-1] | join("/") | if . == "" then "/" else . end) as $parent | select([$paths[] | select(. == $parent)] | length > 0) | [$parent, $child]]}
 
   - id: slim_pages
     description: "Slim page list for dashboard table (drop heavy sub-objects)"
@@ -723,26 +723,22 @@ tasks:
           pages: "{{with.pages}}"
           broken_count: "{{with.broken | length}}"
           soft_404_count: "{{with.soft_404 | length}}"
-          robots_txt: "{{with.robots | default('')}}"
+          robots_txt: "{{with.robots.extracted | default(with.robots) | default('') | to_string}}"
         expr: |
-          .pages | length as $total |
-          [.pages[] | .status // 200] | group_by(. / 100 | floor) |
+          . as $d |
+          ($d.pages | length) as $total |
+          [$d.pages[] | .status // 200] | group_by(. / 100 | floor) |
           map({(.[0] / 100 | floor | tostring + "xx"): length}) | add // {} |
-          . as $status_map |
+          . as $sm |
           {
-            health_score: (((($total - .broken_count - .soft_404_count) * 100) / ([$total, 1] | max)) | round),
-            status: {
-              ok: ($status_map["2xx"] // 0),
-              redirect: ($status_map["3xx"] // 0),
-              error: ($status_map["4xx"] // 0),
-              server_error: ($status_map["5xx"] // 0)
-            },
-            depths: ([.pages[] | .depth // 0 | tostring] | group_by(.) | map({(.[0]): length}) | add // {}),
+            health_score: (((($total - $d.broken_count - $d.soft_404_count) * 100) / ([$total, 1] | max)) | round),
+            status: {ok: ($sm["2xx"] // 0), redirect: ($sm["3xx"] // 0), error: ($sm["4xx"] // 0), server_error: ($sm["5xx"] // 0)},
+            depths: ([$d.pages[] | .depth // 0 | tostring] | group_by(.) | map({(.[0]): length}) | add // {}),
             crawlers: {
-              Googlebot: (.robots_txt | test("Googlebot") | not),
-              Bingbot: (.robots_txt | test("Bingbot") | not),
-              GPTBot: (.robots_txt | test("GPTBot") | not),
-              ClaudeBot: (.robots_txt | test("ClaudeBot") | not)
+              Googlebot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Googlebot") | not) else true end),
+              Bingbot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Bingbot") | not) else true end),
+              GPTBot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("GPTBot") | not) else true end),
+              ClaudeBot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("ClaudeBot") | not) else true end)
             }
           }
 
