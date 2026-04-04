@@ -710,9 +710,19 @@ tasks:
         data: "{{with.resp.body | parse_json}}"
         expr: "[.candidates[0].content.parts[] | select(.inlineData) | .inlineData.data] | if length > 0 then .[0] else \"\" end"
 
+  - id: locale_counts
+    description: "Compute per-locale page counts for the report"
+    depends_on: [pages_by_locale]
+    with: { by_locale: $pages_by_locale }
+    invoke:
+      tool: "nika:jq"
+      params:
+        data: "{{with.by_locale}}"
+        expr: "[to_entries[] | {locale: .key, pages: (.value | length)}] | sort_by(.pages) | reverse"
+
   - id: crawl_report
     depends_on: [stats, broken_pages, soft_404_pages, hreflang_audit,
-                 pages_by_locale, enriched_pages, hreflang_pages, geo_analysis]
+                 pages_by_locale, enriched_pages, hreflang_pages, geo_analysis, locale_counts]
     with:
       stats: $stats
       broken: $broken_pages
@@ -722,6 +732,7 @@ tasks:
       pages: $enriched_pages
       hreflang_pages: $hreflang_pages
       geo: $geo_analysis
+      locale_counts: $locale_counts
     infer:
       prompt: |
         You are a senior SEO consultant writing a comprehensive, data-driven site audit report.
@@ -744,9 +755,8 @@ tasks:
         CRAWL STATS: {{with.stats | to_json}}
         HEALTH SCORE: {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 400) | length}} healthy of {{with.pages | length}} total = {{with.pages | where('status', 'gte', 400) | length}} errors
 
-        IMPORTANT — LOCALE PAGE COUNTS (use these exact numbers in the locale table):
-        {{with.by_locale | keys | to_json}}
-        Pages per locale: {{with.by_locale | jq('[to_entries[] | {locale: .key, pages: (.value | length)}] | sort_by(.pages) | reverse')}}
+        LOCALE PAGE COUNTS (use these EXACT numbers in the locale breakdown table):
+        {{with.locale_counts | to_json}}
 
         STATUS DISTRIBUTION:
         - 2xx OK:        {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}} pages
