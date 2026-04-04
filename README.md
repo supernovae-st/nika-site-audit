@@ -10,8 +10,10 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 
 ```bash
 brew install supernovae-st/tap/nika
-nika --version   # v0.65.1+
+nika --version   # requires v0.65.1+
 ```
+
+> **Minimum version: v0.65.1** (current stable). Uses `nika:jq`, `nika:tree_data`, `nika:inject`, encrypted vault, `$binding ?? fallback`. Older versions will fail.
 
 <details>
 <summary>Other install methods (Linux, Intel Mac, source)</summary>
@@ -147,10 +149,11 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) v0.65.1+
-- **Required**: OpenAI API key (LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script)
-- **Optional**: Gemini API key with billing enabled (Nano Banana image generation)
-- **Optional**: ElevenLabs API key (podcast audio narration)
+- [Nika](https://github.com/supernovae-st/nika) **v0.65.1+** (latest stable: v0.65.1)
+- **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
+- **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
+- **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
+- Images and audio are optional branches — workflow succeeds without them
 
 ## Usage
 
