@@ -764,10 +764,18 @@ tasks:
           var CHART = "";
         overwrite: true
 
+  - id: read_dashboard_js
+    description: "Read generated dashboard data JS file"
+    depends_on: [write_dashboard_js]
+    invoke:
+      tool: "nika:read"
+      params:
+        path: "./artifacts/tmp/dashboard-data.js"
+
   - id: html_dashboard
     description: "Inject data variables into dashboard HTML template"
-    depends_on: [write_dashboard_js]
-    with: { data: $write_dashboard_js }
+    depends_on: [read_dashboard_js]
+    with: { js: $read_dashboard_js }
     invoke:
       tool: "nika:inject"
       params:
@@ -775,4 +783,4 @@ tasks:
         output: "./artifacts/audit-dashboard.html"
         start_marker: "// DATA —"
         end_marker: "// CONSTANTS & HELPERS"
-        content: "{{with.data}}"
+        content: "{{with.js}}"
