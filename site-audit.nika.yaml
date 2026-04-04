@@ -650,70 +650,55 @@ tasks:
       path: crawl-report.md
       format: markdown
 
-  # Generate dashboard data (TREE + GRAPH JS variables)
-  # Dashboard step 1: LLM formats native data into JS objects
-  - id: dashboard_data
-    description: "Format treemap + graph data from native analysis"
-    depends_on: [pages_by_locale, pages_by_section, enriched_pages, broken_pages, soft_404_pages]
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 8b: Dashboard data (deterministic — zero LLM, exact counts)
+  # exec jq for complex nested grouping, nika:write for JS output
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: write_pages_json
+    description: "Cache enriched pages for deterministic processing"
+    depends_on: [enriched_pages]
+    with: { pages: $enriched_pages }
+    invoke:
+      tool: "nika:write"
+      params:
+        file_path: ".nika/cache/enriched-pages.json"
+        content: "{{with.pages | to_json}}"
+        overwrite: true
+
+  - id: build_tree
+    description: "Treemap hierarchy — exact counts per locale/section"
+    depends_on: [write_pages_json, broken_pages, soft_404_pages]
     with:
-      by_locale: $pages_by_locale
-      by_section: $pages_by_section
-      pages: $enriched_pages
       broken: $broken_pages
       soft_404: $soft_404_pages
-    infer:
-      prompt: |
-        Convert this audit data into TWO JavaScript variable assignments.
+    exec:
+      command: "jq --arg domain '{{inputs.url | url_host}}' --argjson broken '{{with.broken | length}}' --argjson soft '{{with.soft_404 | length}}' '{name: $domain, total_pages: length, health_score: (((length - $broken - $soft) * 100 / ([length, 1] | max)) | round), children: [group_by(.locale)[] | {name: .[0].locale, children: [group_by(.section)[] | {name: (\"/\" + .[0].section), value: length}] | sort_by(-.value)}] | sort_by(-(.children | map(.value) | add))}' .nika/cache/enriched-pages.json"
+      shell: true
 
-        SITE: {{inputs.url}}
-        TOTAL PAGES: {{with.pages | length}}
-        BROKEN: {{with.broken | length}}
-        SOFT 404: {{with.soft_404 | length}}
-        HEALTH: round(100 * ({{with.pages | length}} - {{with.broken | length}} - {{with.soft_404 | length}}) / {{with.pages | length}})
+  - id: build_graph
+    description: "Force graph — nodes from URL paths, edges from hierarchy"
+    depends_on: [write_pages_json]
+    exec:
+      command: "jq --arg base '{{inputs.url}}' '[.[] | .url | ltrimstr($base) | if . == \"\" or . == \"/\" then \"/\" else rtrimstr(\"/\") end] | unique | .[0:80] | . as $paths | {nodes: [$paths[] | {id: ., g: (if . == \"/\" then \"root\" elif test(\"^/(docs?|api|reference|guides?|learn|tutorials?|examples?|faq|handbook|getting-started|changelog|attributes?|specs?|schemas?)(/|$)\") then \"doc\" elif test(\"^/(blog|news|articles?|posts?|essays|stories|interviews|updates|press|newsletter|talks?)(/|$)\") then \"cnt\" elif test(\"^/(about|contact|careers|legal|terms|privacy|team|company|imprint|jobs|lore|webring)(/|$)\") then \"co\" elif test(\"^/(pricing|features|solutions|enterprise|plans|tarifs|preise)(/|$)\") then \"mkt\" elif test(\"^/(app|dashboard|console|product|tools|extensions|plugins|integrations|packages?)(/|$)\") then \"prod\" elif test(\"^/(login|sign-?up|register|auth|account|profile|settings|sso)(/|$)\") then \"auth\" else \"cnt\" end)}], links: [$paths[] | select(. != \"/\") | . as $child | ($child | split(\"/\") | if .[-1] == \"\" then .[:-1] else . end | .[:-1] | join(\"/\") | if . == \"\" then \"/\" else . end) as $parent | select([$paths[] | select(. == $parent)] | length > 0) | [$parent, $child]]}' .nika/cache/enriched-pages.json"
+      shell: true
 
-        LOCALE LIST: {{with.by_locale | keys | to_json}}
-        SECTION LIST: {{with.by_section | keys | to_json}}
+  - id: write_dashboard_js
+    description: "Format TREE + GRAPH as JavaScript for dashboard"
+    depends_on: [build_tree, build_graph]
+    with:
+      tree: $build_tree
+      graph: $build_graph
+    invoke:
+      tool: "nika:write"
+      params:
+        file_path: "artifacts/tmp/dashboard-data.js"
+        content: "var TREE = {{with.tree | to_json}};\nvar GRAPH = {{with.graph | to_json}};"
+        overwrite: true
 
-        ALL PAGE SECTIONS (count occurrences for exact treemap values):
-        {{with.pages | pluck('section') | to_json}}
-
-        ALL PAGE LOCALES (count occurrences for exact locale values):
-        {{with.pages | pluck('locale') | to_json}}
-
-        TOP 60 PAGE URLs (for graph nodes + links):
-        {{with.pages | first(60) | pluck('url') | to_json}}
-
-        Return EXACTLY two var assignments. No markdown, no backticks.
-
-        var TREE = {
-          name:"<domain>", total_pages:<N>, health_score:<N>,
-          children:[
-            {name:"<locale>", children:[{name:"<section>", value:<EXACT_COUNT>}]}
-          ]
-        };
-        var GRAPH = {
-          nodes:[{id:"<path>", g:"<group>"}],
-          links:[["<from>","<to>"]]
-        };
-
-        CRITICAL RULES:
-        1. TREE children: one per locale. Each locale's sub-children = sections with EXACT page counts from the data above.
-        2. TREE values MUST sum to total_pages exactly.
-        3. GRAPH: create nodes for the top 25 most important paths from the URLs above. g = group category (root/doc/mkt/cnt/co/auth).
-        4. GRAPH: ~35 links showing parent-child URL relationships (e.g. /docs/ → /docs/api/).
-        5. EVERY id in links MUST exist in nodes. No dangling references.
-        6. Do NOT invent URLs — only use paths from the data provided.
-      temperature: 0.0
-      max_tokens: 12000
-    artifact:
-      path: tmp/dashboard-data.js
-      format: text
-
-  # Dashboard step 2: inject LLM data into proven HTML template
-  # awk replaces everything between DATA markers with the generated JS
   - id: html_dashboard
-    description: "Inject data into fixed HTML template"
-    depends_on: [dashboard_data]
+    description: "Inject data into dashboard HTML template"
+    depends_on: [write_dashboard_js]
     exec:
       command: "awk '/\\/\\/ ===== END DATA/{skip=0} !skip{print} /\\/\\/ ===== DATA/{skip=1; while((getline line < \"./artifacts/tmp/dashboard-data.js\")>0) print line}' ./templates/dashboard.html > ./artifacts/audit-dashboard.html && echo 'Dashboard built'"
       shell: true
