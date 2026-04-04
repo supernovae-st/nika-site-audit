@@ -16,7 +16,7 @@ context:
     dashboard_template: ./templates/dashboard.html
 
 inputs:
-  url: "https://htmx.org"
+  url: "https://qrcode-ai.com"
 
 tasks:
 
@@ -564,34 +564,163 @@ tasks:
   # ═════════════════════════════════════════════════════════════════════
 
   - id: mermaid_tree
-    depends_on: [pages_by_locale, enriched_pages]
+    depends_on: [pages_by_locale, enriched_pages, pages_by_section, broken_pages, stats]
     with:
       by_locale: $pages_by_locale
+      by_section: $pages_by_section
       pages: $enriched_pages
+      broken: $broken_pages
+      stats: $stats
     infer:
       prompt: |
-        Generate a Mermaid flowchart showing the site structure by locale.
-        Show the top 3 depth levels only. Group by locale.
+        Generate a comprehensive Mermaid site structure diagram for a multilingual website audit.
+        This diagram should be the visual centerpiece of the audit report.
 
-        Base URL: {{inputs.url}}
-        Total pages: {{with.pages | length}}
-        Locales: {{with.by_locale | keys | to_json}}
-        Sample pages (30): {{with.pages | first(30) | pluck('url') | to_json}}
+        SITE DATA:
+        - Base URL: {{inputs.url}}
+        - Total pages: {{with.pages | length}}
+        - Locales ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
+        - Sections: {{with.by_section | keys | to_json}}
+        - Broken pages: {{with.broken | length}}
+        - Avg response: {{with.stats.avg}}ms
 
-        Format:
+        Sample pages (50): {{with.pages | first(50) | pluck('url') | to_json}}
+        Sample broken: {{with.broken | first(10) | pluck('url') | to_json}}
+
+        REQUIREMENTS:
+        1. Use `graph TD` (top-down) layout
+        2. Root node = domain name with total page count
+        3. Level 1 = Top locales (show top 8 by page count, group rest as "Other X locales")
+        4. Level 2 = Main sections per locale (show top 5 sections per locale)
+        5. Level 3 = Sub-sections if notable (blog categories, doc sections)
+        6. Use Mermaid styling:
+           - `:::error` class for broken page nodes
+           - Page counts in parentheses: `en[EN 44p]`
+           - Use icons: 🌐 for locales, 📄 for sections, ❌ for errors
+        7. Add a subgraph for "Issues Found" showing broken page summary
+        8. Max 80 nodes (be selective, show the most important structure)
+
+        FORMAT — return a complete markdown document:
+        ```markdown
+        # Site Structure — {{inputs.url}}
+
+        > Crawled **N** pages across **N** locales. Health score: **N%**
+
         ```mermaid
         graph TD
-          root[domain] --> en[EN Np]
-          root --> fr[FR Np]
-          en --> en_cat1[/en/category 5p]
+          classDef error fill:#ef4444,stroke:#dc2626,color:#fff
+          classDef locale fill:#6366f1,stroke:#4f46e5,color:#fff
+          classDef section fill:#1e2130,stroke:#2d3148,color:#e2e8f0
+
+          root["🌐 domain.com<br/>N pages"]
+          root --> en["🇬🇧 EN<br/>N pages"]:::locale
+          root --> fr["🇫🇷 FR<br/>N pages"]:::locale
+
+          en --> en_blog["📄 /blog<br/>N pages"]:::section
+          en --> en_docs["📄 /docs<br/>N pages"]:::section
+
+          subgraph issues["❌ Issues Found"]
+            broken["N broken pages"]:::error
+          end
+        ``` (triple backtick)
+
+        ## Locale Breakdown
+
+        | Locale | Pages | Sections | Status |
+        |--------|-------|----------|--------|
+        | EN     | N     | N        | ✅      |
+        | FR     | N     | N        | ⚠️      |
+
+        ## Key Observations
+        - Bullet point observations about the structure
         ```
 
-        Return ONLY the mermaid code block. Max 50 nodes.
-      temperature: 0.0
-      max_tokens: 2000
+        Return the COMPLETE markdown document with the mermaid diagram embedded.
+      temperature: 0.1
+      max_tokens: 4000
     artifact:
       path: site-structure.md
       format: markdown
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 8c: Gemini Image Generation (parallel — AI-generated visuals)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: gen_header_image
+    description: "Generate report header banner via Imagen 3"
+    depends_on: [enriched_pages, broken_pages, pages_by_locale]
+    with:
+      pages: $enriched_pages
+      broken: $broken_pages
+      by_locale: $pages_by_locale
+      gemini_key: $env.GEMINI_API_KEY
+    fetch:
+      url: "https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent?key={{with.gemini_key}}"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      json:
+        contents:
+          - parts:
+              - text: "Professional hero banner for an SEO site audit report. Abstract visualization of {{with.pages | length}} web pages across {{with.by_locale | keys | length}} languages being analyzed — interconnected luminous nodes and scanning beams on a dark canvas. Modern tech aesthetic, gradient from deep navy (#0f1117) to electric blue (#4f46e5). Minimalist, NO text, wide format. Corporate quality, clean lines, subtle glow effects. Some nodes highlighted in red ({{with.broken | length}} errors). Beautiful, premium, cinematic feel."
+        generationConfig:
+          responseModalities:
+            - IMAGE
+          responseMimeType: "text/plain"
+      response: full
+      timeout: 60
+    retry:
+      max_attempts: 2
+      delay_ms: 5000
+
+  - id: extract_header_b64
+    description: "Extract base64 image from Imagen response"
+    depends_on: [gen_header_image]
+    with: { resp: $gen_header_image }
+    invoke:
+      tool: "nika:jq"
+      params:
+        data: "{{with.resp.body | parse_json}}"
+        expr: "[.candidates[0].content.parts[] | select(.inlineData) | .inlineData.data] | if length > 0 then .[0] else \"\" end"
+
+  - id: gen_metrics_image
+    description: "Generate metrics infographic via Imagen 3"
+    depends_on: [stats, enriched_pages, broken_pages, soft_404_pages, pages_by_locale]
+    with:
+      stats: $stats
+      pages: $enriched_pages
+      broken: $broken_pages
+      soft_404: $soft_404_pages
+      by_locale: $pages_by_locale
+      gemini_key: $env.GEMINI_API_KEY
+    fetch:
+      url: "https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent?key={{with.gemini_key}}"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      json:
+        contents:
+          - parts:
+              - text: "Clean professional data visualization infographic for an SEO audit. Modern gauge charts showing: Total Pages {{with.pages | length}}, {{with.by_locale | keys | length}} Locales, {{with.broken | length}} Errors, Avg Response {{with.stats.avg}}ms. Dark background (#0f1117), accent colors: green (#10b981) good, yellow (#f59e0b) warning, red (#ef4444) errors, indigo (#6366f1) primary. Flat design, data-focused, clean grid. NO people, NO text on image, only visual charts and gauges."
+        generationConfig:
+          responseModalities:
+            - IMAGE
+          responseMimeType: "text/plain"
+      response: full
+      timeout: 60
+    retry:
+      max_attempts: 2
+      delay_ms: 5000
+
+  - id: extract_metrics_b64
+    description: "Extract base64 image from Imagen response"
+    depends_on: [gen_metrics_image]
+    with: { resp: $gen_metrics_image }
+    invoke:
+      tool: "nika:jq"
+      params:
+        data: "{{with.resp.body | parse_json}}"
+        expr: "[.candidates[0].content.parts[] | select(.inlineData) | .inlineData.data] | if length > 0 then .[0] else \"\" end"
 
   - id: crawl_report
     depends_on: [stats, broken_pages, soft_404_pages, hreflang_audit,
@@ -607,48 +736,187 @@ tasks:
       geo: $geo_analysis
     infer:
       prompt: |
-        Generate a professional markdown site audit report. Use the SEO auditor skill for scoring.
+        You are a senior SEO consultant writing a comprehensive, data-driven site audit report.
+        Write a LONG, detailed, professional markdown report (at least 3000 words).
+        Use the SEO auditor skill for scoring methodology.
+
+        ═══════════════════════════════════════════════════════════════
+        AUDIT DATA
+        ═══════════════════════════════════════════════════════════════
 
         SITE: {{inputs.url}}
-        TOTAL PAGES: {{with.pages | length}}
+        TOTAL PAGES CRAWLED: {{with.pages | length}}
         LOCALES ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
         HREFLANG PAGES: {{with.hreflang_pages | length}}
-        STATS: {{with.stats | to_json}}
-        BROKEN ({{with.broken | length}}): {{with.broken | pluck('url') | first(20) | to_json}}
-        SOFT 404 ({{with.soft_404 | length}}): {{with.soft_404 | pluck('url') | first(10) | to_json}}
-        HREFLANG AUDIT: {{with.hreflang | to_json}}
-        GEO AUDIT: {{with.geo | to_json}}
-        SAMPLE PAGES (20): {{with.pages | first(20) | to_json}}
+        CRAWL STATS: {{with.stats | to_json}}
 
         STATUS DISTRIBUTION:
-        - 2xx: {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}}
-        - 3xx: {{with.pages | where('status', 'gte', 300) | where('status', 'lt', 400) | length}}
-        - 4xx: {{with.pages | where('status', 'gte', 400) | where('status', 'lt', 500) | length}}
-        - 5xx: {{with.pages | where('status', 'gte', 500) | length}}
+        - 2xx OK:        {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}} pages
+        - 3xx Redirect:  {{with.pages | where('status', 'gte', 300) | where('status', 'lt', 400) | length}} pages
+        - 4xx Error:     {{with.pages | where('status', 'gte', 400) | where('status', 'lt', 500) | length}} pages
+        - 5xx Server:    {{with.pages | where('status', 'gte', 500) | length}} pages
+
+        BROKEN PAGES ({{with.broken | length}}):
+        {{with.broken | pluck('url') | first(30) | to_json}}
+
+        SOFT 404 ({{with.soft_404 | length}}):
+        {{with.soft_404 | pluck('url') | first(15) | to_json}}
 
         DEPTH DISTRIBUTION:
-        - Depth 0: {{with.pages | where('depth', 'eq', 0) | length}}
-        - Depth 1: {{with.pages | where('depth', 'eq', 1) | length}}
-        - Depth 2: {{with.pages | where('depth', 'eq', 2) | length}}
-        - Depth 3: {{with.pages | where('depth', 'eq', 3) | length}}
-        - Depth 4+: {{with.pages | where('depth', 'gte', 4) | length}}
+        - Depth 0 (homepage): {{with.pages | where('depth', 'eq', 0) | length}}
+        - Depth 1 (main sections): {{with.pages | where('depth', 'eq', 1) | length}}
+        - Depth 2 (sub-pages): {{with.pages | where('depth', 'eq', 2) | length}}
+        - Depth 3 (deep content): {{with.pages | where('depth', 'eq', 3) | length}}
+        - Depth 4+ (very deep): {{with.pages | where('depth', 'gte', 4) | length}}
 
-        Generate these sections:
-        1. Executive Summary — health score (use skill formula), top 3 priorities
-        2. SEO Score Breakdown — status distribution, issues by severity
-        3. Locale & International — locale breakdown table, hreflang coverage
-        4. GEO Analysis — AI crawler access, llms.txt status, citability score
-        5. Crawl Depth Analysis — depth distribution, flagged deep pages
-        6. Performance — response time stats
-        7. Issues Index — all issues grouped by severity (CRITICAL/HIGH/MEDIUM/LOW)
-        8. Recommendations — prioritized action plan (Quick Wins / This Month / This Quarter)
+        HREFLANG AUDIT RESULTS: {{with.hreflang | to_json}}
 
-        Use tables, ASCII bar charts for distributions. Be specific with URLs and numbers.
-      temperature: 0.0
-      max_tokens: 8000
+        GEO (AI OPTIMIZATION) AUDIT: {{with.geo | to_json}}
+
+        SAMPLE PAGES (30): {{with.pages | first(30) | to_json}}
+
+        ═══════════════════════════════════════════════════════════════
+        REPORT STRUCTURE — Write ALL of these sections in detail:
+        ═══════════════════════════════════════════════════════════════
+
+        # Technical SEO Site Audit — {{inputs.url}}
+
+        ## 1. Executive Summary
+        - Overall health score with letter grade (A/B/C/D/F)
+        - 3-sentence verdict on the site's SEO health
+        - Top 3 critical priorities
+        - Key metrics table: Total Pages, Locales, Health Score, Error Rate, Avg Response Time
+
+        ## 2. Crawl Overview
+        - How many pages were discovered and crawled
+        - Crawl methodology (sitemap + homepage links + 2nd round discovery)
+        - Status code distribution table with percentages and visual bars
+        - Response time analysis (avg, max, slow pages)
+
+        ## 3. Site Architecture & Depth Analysis
+        - Depth distribution table with commentary
+        - Flag any pages at depth 4+ as architecture concerns
+        - Analysis of URL structure patterns
+        - Section breakdown (how content is organized)
+
+        ## 4. International SEO & Localization
+        - Full locale breakdown table (locale, page count, percentage of total)
+        - Hreflang tag coverage and validation results
+        - Bidirectional hreflang check results
+        - Missing locale coverage analysis
+        - Locale-specific issues
+
+        ## 5. GEO Analysis (AI Search Optimization)
+        - AI crawler access status (table: bot name, status, recommendation)
+        - llms.txt presence and analysis
+        - Citability score with explanation
+        - Recommendations for AI search visibility
+        - Comparison with industry best practices
+
+        ## 6. Error Analysis
+        - Full list of 4xx errors (up to 30 URLs) with analysis
+        - 5xx server errors if any
+        - Soft 404 detection results
+        - Impact assessment for each error category
+
+        ## 7. Performance
+        - Response time statistics
+        - Slow pages flagged (>2s)
+        - Server performance assessment
+
+        ## 8. Issues Index
+        Group ALL issues by severity with counts:
+        - CRITICAL: immediate action needed (5xx errors, major hreflang failures)
+        - HIGH: fix within 1 week (4xx errors, blocked crawlers)
+        - MEDIUM: fix within 1 month (deep pages, slow responses)
+        - LOW: nice to have improvements
+
+        ## 9. Recommendations & Action Plan
+
+        ### Quick Wins (this week)
+        Specific, actionable items with URLs
+
+        ### This Month
+        Medium-term improvements
+
+        ### This Quarter
+        Strategic improvements
+
+        ## 10. Appendix
+        - Full status distribution table
+        - Locale inventory
+        - Methodology notes
+
+        ═══════════════════════════════════════════════════════════════
+        FORMATTING RULES:
+        - Use markdown tables with proper alignment
+        - Use **bold** for key numbers and metrics
+        - Use `code` for URLs
+        - Include ASCII bar charts for distributions: ████████░░ 80%
+        - Be specific: cite actual URLs, not generic descriptions
+        - Every finding must include: what, where (URL), impact, fix
+        - Minimum 3000 words — this is a comprehensive professional audit
+        ═══════════════════════════════════════════════════════════════
+      temperature: 0.1
+      max_tokens: 16000
     artifact:
       path: crawl-report.md
       format: markdown
+
+  # ═════════════════════════════════════════════════════════════════════
+  # LAYER 8d: Audio narration (ElevenLabs TTS)
+  # ═════════════════════════════════════════════════════════════════════
+
+  - id: audio_script
+    description: "Create a 5-minute podcast script from the audit report"
+    depends_on: [crawl_report]
+    with: { report: $crawl_report }
+    infer:
+      prompt: |
+        Convert this SEO audit report into a natural, engaging 5-minute podcast narration script.
+        Write as if you're a professional SEO analyst presenting findings to a client.
+
+        Rules:
+        - Start with "Welcome to your site audit report for [domain]"
+        - Be conversational but data-driven
+        - Highlight the 3 most important findings
+        - End with top 3 action items
+        - Target ~750 words (5 minutes of speech)
+        - Do NOT use markdown formatting, just plain text
+        - Use natural pauses: "..." for short pauses, "—" for emphasis
+
+        Report:
+        {{with.report}}
+      temperature: 0.3
+      max_tokens: 3000
+
+  - id: gen_audio
+    description: "Generate podcast audio via ElevenLabs"
+    depends_on: [audio_script]
+    with:
+      script: $audio_script
+      el_key: $env.ELEVENLABS_API_KEY
+    fetch:
+      url: "https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB"
+      method: POST
+      headers:
+        xi-api-key: "{{with.el_key}}"
+        Content-Type: "application/json"
+      json:
+        text: "{{with.script}}"
+        model_id: "eleven_multilingual_v2"
+        voice_settings:
+          stability: 0.5
+          similarity_boost: 0.75
+          style: 0.3
+      response: binary
+      timeout: 120
+    retry:
+      max_attempts: 2
+      delay_ms: 5000
+    artifact:
+      path: audio/site-audit-podcast.mp3
+      format: binary
 
   # ═════════════════════════════════════════════════════════════════════
   # LAYER 8b: Dashboard data (100% native — zero exec, zero LLM)
@@ -727,12 +995,14 @@ tasks:
         expr: |
           . as $d |
           ($d.pages | length) as $total |
-          [$d.pages[] | .status // 200] | group_by(. / 100 | floor) |
-          map({(.[0] / 100 | floor | tostring + "xx"): length}) | add // {} |
-          . as $sm |
           {
             health_score: (((($total - $d.broken_count - $d.soft_404_count) * 100) / ([$total, 1] | max)) | round),
-            status: {ok: ($sm["2xx"] // 0), redirect: ($sm["3xx"] // 0), error: ($sm["4xx"] // 0), server_error: ($sm["5xx"] // 0)},
+            status: {
+              ok: ([$d.pages[] | select((.status // 200) >= 200 and (.status // 200) < 300)] | length),
+              redirect: ([$d.pages[] | select((.status // 200) >= 300 and (.status // 200) < 400)] | length),
+              error: ([$d.pages[] | select((.status // 200) >= 400 and (.status // 200) < 500)] | length),
+              server_error: ([$d.pages[] | select((.status // 200) >= 500)] | length)
+            },
             depths: ([$d.pages[] | .depth // 0 | tostring] | group_by(.) | map({(.[0]): length}) | add // {}),
             crawlers: {
               Googlebot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Googlebot") | not) else true end),
@@ -764,19 +1034,17 @@ tasks:
           var CHART = "";
         overwrite: true
 
-  - id: read_dashboard_js
-    description: "Read generated dashboard data JS file"
-    depends_on: [write_dashboard_js]
-    invoke:
-      tool: "nika:read"
-      params:
-        file_path: "./artifacts/tmp/dashboard-data.js"
-        raw: true
-
   - id: html_dashboard
     description: "Inject data variables into dashboard HTML template"
-    depends_on: [read_dashboard_js]
-    with: { js: $read_dashboard_js }
+    depends_on: [build_tree, build_graph, crawl_report, slim_pages, dashboard_stats]
+    with:
+      tree: $build_tree
+      graph: $build_graph
+      report: $crawl_report
+      pages: $slim_pages
+      stats: $dashboard_stats
+      header_img: $extract_header_b64 ?? ""
+      metrics_img: $extract_metrics_b64 ?? ""
     invoke:
       tool: "nika:inject"
       params:
@@ -784,4 +1052,11 @@ tasks:
         output: "./artifacts/audit-dashboard.html"
         start_marker: "// DATA —"
         end_marker: "// CONSTANTS & HELPERS"
-        content: "{{with.js}}"
+        content: |
+          var TREE = {{with.tree | to_json}};
+          var GRAPH = {{with.graph | to_json}};
+          var REPORT = {{with.report | to_json}};
+          var PAGES = {{with.pages | to_json}};
+          var STATS = {{with.stats | to_json}};
+          var CHART = "";
+          var IMAGES = [];

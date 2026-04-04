@@ -10,5 +10,17 @@ model = "gpt-5.2"
 allow_exec = true
 allow_network = true
 
+[policy]
+allow_exec = true
+allow_network = true
+fetch_allow = [
+  "api.elevenlabs.io",
+  "generativelanguage.googleapis.com",
+]
+fetch_robots_bypass = [
+  "api.elevenlabs.io",
+  "generativelanguage.googleapis.com",
+]
+
 [artifacts]
 dir = "./artifacts"

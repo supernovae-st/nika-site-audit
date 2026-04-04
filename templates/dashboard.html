@@ -26,8 +26,9 @@ h1{font-size:1.4rem;font-weight:600;margin-bottom:16px;color:#f1f5f9}
 .tab.active,.tab:hover{background:#2d3148;color:#f1f5f9;border-color:#4f46e5}
 
 /* ===== VIEW PANELS ===== */
-.view{display:none;background:#1a1d2e;border:1px solid #2d3148;border-radius:12px;overflow:hidden;min-height:520px;position:relative}
+.view{display:none;background:#1a1d2e;border:1px solid #2d3148;border-radius:12px;overflow:hidden;min-height:520px;position:relative;animation:viewIn .25s ease}
 .view.active{display:block}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 
 /* ===== TREEMAP ===== */
 .tm-container{width:100%;height:520px;position:relative;overflow:hidden}
@@ -150,11 +151,54 @@ h1{font-size:1.4rem;font-weight:600;margin-bottom:16px;color:#f1f5f9}
 .tip b{color:#f1f5f9;display:block}
 .tip i{color:#94a3b8;font-style:normal;font-size:.72rem}
 
+/* ===== LOCALE FILTER BAR ===== */
+.filter-bar{display:flex;gap:5px;margin-bottom:14px;align-items:center;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.filter-bar::-webkit-scrollbar{height:3px}
+.filter-bar::-webkit-scrollbar-thumb{background:#2d3148;border-radius:2px}
+.filter-label{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-right:4px;flex-shrink:0}
+.fpill{padding:4px 11px;border-radius:14px;font-size:.7rem;cursor:pointer;border:1px solid #2d3148;background:transparent;color:#94a3b8;transition:all .15s;font-family:inherit;white-space:nowrap;flex-shrink:0}
+.fpill.active{background:#4f46e5;color:#fff;border-color:#4f46e5}
+.fpill:hover:not(.active){border-color:#4f46e5;color:#f1f5f9}
+.fpill .fc{font-size:.58rem;opacity:.55;margin-left:3px}
+
+/* ===== LOCALE GRID VIEW ===== */
+.locale-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;padding:20px}
+.lcard{background:#1e2130;border:1px solid #2d3148;border-radius:10px;padding:14px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.lcard:hover{border-color:#4f46e5;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.lcard.sel{border-color:#4f46e5;box-shadow:0 0 12px rgba(99,102,241,.15)}
+.lcard-name{font-size:.95rem;font-weight:700;color:#f1f5f9;text-transform:uppercase}
+.lcard-ct{font-size:.7rem;color:#64748b;margin-top:2px}
+.lcard-score{font-size:1.8rem;font-weight:700;margin:6px 0 2px}
+.lcard-label{font-size:.62rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+.lcard-bar{height:4px;border-radius:2px;background:#2d3148;margin-top:10px;overflow:hidden}
+.lcard-fill{height:100%;border-radius:2px;transition:width .4s ease}
+
+/* ===== OVERVIEW ===== */
+.overview-wrap{padding:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.ov-section{background:#1e2130;border:1px solid #2d3148;border-radius:10px;padding:20px}
+.ov-section-full{grid-column:1/-1}
+.ov-title{font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-bottom:14px}
+.ov-issues{display:flex;flex-direction:column;gap:6px}
+.ov-issue{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#1a1d2e;border-radius:8px;border:1px solid #2d3148}
+.ov-sev{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ov-sev.critical{background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.4)}
+.ov-sev.high{background:#f59e0b;box-shadow:0 0 6px rgba(245,158,11,.4)}
+.ov-sev.medium{background:#06b6d4}
+.ov-sev.low{background:#64748b}
+.ov-issue-text{font-size:.8rem;color:#e2e8f0;flex:1}
+.ov-issue-count{font-size:.75rem;color:#94a3b8;font-weight:600}
+.ov-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px}
+.ov-stat{text-align:center;padding:10px}
+.ov-stat-val{font-size:1.3rem;font-weight:700;color:#f1f5f9}
+.ov-stat-label{font-size:.65rem;color:#64748b;text-transform:uppercase;margin-top:2px}
+
 /* ===== RESPONSIVE ===== */
 @media(max-width:768px){
   .health-wrap{grid-template-columns:1fr}
   .pl-toolbar{flex-direction:column;align-items:stretch}
   .pl-count{margin-left:0;margin-top:4px}
+  .overview-wrap{grid-template-columns:1fr}
+  .filter-bar{flex-wrap:nowrap}
 }
 </style>
 </head>
@@ -162,10 +206,12 @@ h1{font-size:1.4rem;font-weight:600;margin-bottom:16px;color:#f1f5f9}
 <div class="dash">
   <h1 id="title">Site Structure</h1>
   <div class="cards" id="cards"></div>
+  <div class="filter-bar" id="filterbar"></div>
   <div class="tabs" id="tabbar"></div>
 
   <!-- Tab views -->
-  <div class="view active" id="v-treemap"><div class="tm-container" id="tm"></div></div>
+  <div class="view" id="v-overview"><div class="overview-wrap" id="overview-ct"></div></div>
+  <div class="view" id="v-treemap"><div class="tm-container" id="tm"></div></div>
   <div class="view" id="v-force">
     <div class="force-wrap" id="force-wrap">
       <div class="layout-pills" id="layout-pills"></div>
@@ -177,6 +223,7 @@ h1{font-size:1.4rem;font-weight:600;margin-bottom:16px;color:#f1f5f9}
   <div class="view" id="v-3d"><div class="three-container" id="three-ct"><div id="loading3d">Loading 3D view...</div></div></div>
   <div class="view" id="v-report"><div class="report-container" id="report-ct"></div></div>
   <div class="view" id="v-pages"><div class="pagelist-wrap" id="pages-ct"></div></div>
+  <div class="view" id="v-locale"><div class="locale-grid" id="locale-ct"></div></div>
   <div class="view" id="v-health"><div class="health-wrap" id="health-ct"></div></div>
   <div class="view" id="v-chart"><div class="chart-container" id="chart-ct"></div></div>
 
@@ -246,6 +293,116 @@ var P = ['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','
 var GC = {root:'#f59e0b',mkt:'#6366f1',cnt:'#10b981',doc:'#06b6d4',co:'#8b5cf6',prod:'#ec4899',auth:'#ef4444'};
 var GL = {root:'Root',mkt:'Marketing',cnt:'Content',doc:'Docs',co:'Company',prod:'Product',auth:'Auth'};
 
+// ======================================================================
+// STATE SYSTEM — reactive locale filter + computed data
+// ======================================================================
+var STATE = { locale: 'all' };
+
+function clearEl(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+// Build locale index at load time for O(1) filtering
+var LOCALE_INDEX = {};
+var LOCALE_COUNTS = {};
+PAGES.forEach(function(p, i) {
+  var loc = p.locale || 'default';
+  if (!LOCALE_INDEX[loc]) LOCALE_INDEX[loc] = [];
+  LOCALE_INDEX[loc].push(i);
+  LOCALE_COUNTS[loc] = (LOCALE_COUNTS[loc] || 0) + 1;
+});
+var ALL_LOCALES = Object.keys(LOCALE_COUNTS).sort();
+
+function getFilteredPages() {
+  if (STATE.locale === 'all') return PAGES;
+  var idx = LOCALE_INDEX[STATE.locale] || [];
+  return idx.map(function(i) { return PAGES[i]; });
+}
+
+function getFilteredTree() {
+  if (STATE.locale === 'all') return TREE;
+  var child = null;
+  TREE.children.forEach(function(c) { if (c.name === STATE.locale) child = c; });
+  if (!child) return TREE;
+  var total = child.children.reduce(function(s, c) { return s + c.value; }, 0);
+  return {
+    name: TREE.name, total_pages: total,
+    health_score: TREE.health_score, broken_count: TREE.broken_count || 0,
+    soft_404_count: TREE.soft_404_count || 0,
+    children: [child]
+  };
+}
+
+function computeFilteredStats() {
+  var pages = getFilteredPages();
+  var total = pages.length;
+  var ok = 0, redir = 0, err = 0, se = 0;
+  var depths = {};
+  pages.forEach(function(p) {
+    var s = p.status || 200;
+    if (s >= 200 && s < 300) ok++;
+    else if (s >= 300 && s < 400) redir++;
+    else if (s >= 400 && s < 500) err++;
+    else if (s >= 500) se++;
+    var d = String(p.depth || 0);
+    depths[d] = (depths[d] || 0) + 1;
+  });
+  var hs = total > 0 ? Math.round(((total - err - se) * 100) / total) : 100;
+  return {
+    health_score: hs,
+    status: { ok: ok, redirect: redir, error: err, server_error: se },
+    depths: depths,
+    crawlers: STATS.crawlers
+  };
+}
+
+// ======================================================================
+// LOCALE FILTER BAR
+// ======================================================================
+(function initFilterBar() {
+  var bar = document.getElementById('filterbar');
+  var label = mk('span', 'filter-label', bar);
+  label.textContent = 'Locale';
+
+  function addPill(name, count, isAll) {
+    var pill = mk('button', 'fpill' + (isAll ? ' active' : ''), bar);
+    pill.dataset.locale = name;
+    if (isAll) {
+      pill.textContent = 'All';
+      var fc = mk('span', 'fc', pill);
+      fc.textContent = PAGES.length;
+    } else {
+      pill.textContent = name.toUpperCase();
+      var fc2 = mk('span', 'fc', pill);
+      fc2.textContent = count;
+    }
+    pill.addEventListener('click', function() {
+      STATE.locale = name;
+      bar.querySelectorAll('.fpill').forEach(function(p) { p.classList.remove('active'); });
+      pill.classList.add('active');
+      onLocaleChange();
+    });
+  }
+
+  addPill('all', PAGES.length, true);
+  ALL_LOCALES.forEach(function(loc) { addPill(loc, LOCALE_COUNTS[loc], false); });
+})();
+
+function onLocaleChange() {
+  updateCards();
+  // Reset lazy flags so views re-render with filtered data
+  window._treemapRendered = false;
+  window._healthRendered = false;
+  window._pagesRendered = false;
+  window._overviewRendered = false;
+  window._localeRendered = false;
+  // Re-render current view
+  var v = currentView;
+  if (v === 'treemap') { clearEl(document.getElementById('tm')); renderTreemap(); window._treemapRendered = true; }
+  if (v === 'health') { renderHealth(); window._healthRendered = true; }
+  if (v === 'pages') { clearEl(document.getElementById('pages-ct')); renderPageList(); window._pagesRendered = true; }
+  if (v === 'overview') { renderOverview(); window._overviewRendered = true; }
+  if (v === 'locale') { renderLocaleGrid(); window._localeRendered = true; }
+}
+
 var tip = document.getElementById('tip');
 var tipB = tip.children[0];
 var tipI = tip.children[1];
@@ -278,16 +435,18 @@ function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 // TABS (8 tabs)
 // ======================================================================
 var VIEWS = [
-  {id:'treemap', label:'Treemap'},
-  {id:'force',   label:'Force Graph'},
-  {id:'tree',    label:'Tree Layout'},
-  {id:'3d',      label:'3D Graph'},
-  {id:'report',  label:'Report'},
-  {id:'pages',   label:'Page List'},
-  {id:'health',  label:'Health'},
-  {id:'chart',   label:'Status Chart'}
+  {id:'overview', label:'Overview'},
+  {id:'treemap',  label:'Treemap'},
+  {id:'force',    label:'Force Graph'},
+  {id:'tree',     label:'Tree Layout'},
+  {id:'3d',       label:'3D Graph'},
+  {id:'locale',   label:'Locales'},
+  {id:'report',   label:'Report'},
+  {id:'pages',    label:'Page List'},
+  {id:'health',   label:'Health'},
+  {id:'chart',    label:'Status Chart'}
 ];
-var currentView = 'treemap';
+var currentView = 'overview';
 
 (function initTabs() {
   var bar = document.getElementById('tabbar');
@@ -297,6 +456,8 @@ var currentView = 'treemap';
     t.dataset.view = v.id;
     t.addEventListener('click', function() { showView(v.id); });
   });
+  // Trigger default view after tabs are created
+  showView(currentView);
 })();
 
 function showView(name) {
@@ -318,35 +479,44 @@ function showView(name) {
     lgg.style.display = 'none';
   }
 
-  // Lazy init
-  if (name === '3d' && !window._3dLoaded) { window._3dLoaded = true; init3D(); }
-  if (name === 'force' && window._forceResize) window._forceResize();
-  if (name === 'report' && !window._reportRendered) { window._reportRendered = true; renderReport(); }
-  if (name === 'pages' && !window._pagesRendered) { window._pagesRendered = true; renderPageList(); }
-  if (name === 'health' && !window._healthRendered) { window._healthRendered = true; renderHealth(); }
-  if (name === 'chart' && !window._chartRendered) { window._chartRendered = true; renderChart(); }
+  // Lazy init — use rAF for views that need container dimensions
+  requestAnimationFrame(function() {
+    if (name === 'treemap' && !window._treemapRendered) { window._treemapRendered = true; renderTreemap(); }
+    if (name === '3d' && !window._3dLoaded) { window._3dLoaded = true; init3D(); }
+    if (name === 'force' && window._forceResize) window._forceResize();
+    if (name === 'report' && !window._reportRendered) { window._reportRendered = true; renderReport(); }
+    if (name === 'pages' && !window._pagesRendered) { window._pagesRendered = true; renderPageList(); }
+    if (name === 'health' && !window._healthRendered) { window._healthRendered = true; renderHealth(); }
+    if (name === 'chart' && !window._chartRendered) { window._chartRendered = true; renderChart(); }
+    if (name === 'overview' && !window._overviewRendered) { window._overviewRendered = true; renderOverview(); }
+    if (name === 'locale' && !window._localeRendered) { window._localeRendered = true; renderLocaleGrid(); }
+  });
 }
 
 // ======================================================================
-// KPI CARDS (6 cards)
+// KPI CARDS (reactive — updates on locale change)
 // ======================================================================
-(function initCards() {
-  var d = TREE;
+function updateCards() {
+  var d = getFilteredTree();
+  var st = STATE.locale === 'all' ? STATS : computeFilteredStats();
   var elc = document.getElementById('cards');
-  var tp = d.total_pages || 0;
-  var lc = d.children.length;
-  var h = d.health_score || 100;
+  clearEl(elc);
+  var fp = getFilteredPages();
+  var tp = fp.length;
+  var lc = STATE.locale === 'all' ? ALL_LOCALES.length : 1;
+  var h = st.health_score;
   var totalSections = 0;
   d.children.forEach(function(l) { totalSections += l.children.length; });
   var graphNodes = GRAPH.nodes.length;
   var graphLinks = GRAPH.links.length;
+  var localeLabel = STATE.locale === 'all' ? '' : ' (' + STATE.locale.toUpperCase() + ')';
 
   var items = [
-    {l:'Total Pages', v:tp.toLocaleString(), a:'#6366f1'},
-    {l:'Locales', v:lc, a:'#06b6d4'},
+    {l:'Pages' + localeLabel, v:tp.toLocaleString(), s:STATE.locale !== 'all' ? 'of ' + PAGES.length + ' total' : '', a:'#6366f1'},
+    {l:'Locales', v:lc, s:STATE.locale !== 'all' ? STATE.locale.toUpperCase() : ALL_LOCALES.length + ' total', a:'#06b6d4'},
     {l:'Sections', v:totalSections, a:'#10b981'},
-    {l:'Health', v:h + '%', s:h >= 95 ? 'Excellent' : h >= 80 ? 'Good' : 'Needs work', a:h >= 95 ? '#10b981' : '#f59e0b'},
-    {l:'Nodes', v:graphNodes, s:graphLinks + ' links', a:'#ec4899'},
+    {l:'Health', v:h + '%', s:h >= 95 ? 'Excellent' : h >= 80 ? 'Good' : 'Needs work', a:h >= 95 ? '#10b981' : h >= 80 ? '#f59e0b' : '#ef4444'},
+    {l:'Errors', v:st.status.error + st.status.server_error, s:(st.status.error || 0) + ' client + ' + (st.status.server_error || 0) + ' server', a: (st.status.error + st.status.server_error) > 0 ? '#ef4444' : '#10b981'},
     {l:'Domain', v:d.name, a:'#8b5cf6'}
   ];
 
@@ -359,20 +529,23 @@ function showView(name) {
   });
 
   document.getElementById('title').textContent = d.name + ' \u2014 Site Audit';
-})();
+}
+updateCards();
 
 // ======================================================================
-// TREEMAP (squarified algorithm)
+// TREEMAP (squarified algorithm — re-renderable for locale filter)
 // ======================================================================
-(function initTreemap() {
+function renderTreemap() {
   var container = document.getElementById('tm');
+  clearEl(container);
+  var treeData = getFilteredTree();
   var W = container.clientWidth || 1200;
   var H = container.clientHeight || 520;
   var flat = [], total = 0;
-  var singleLocale = TREE.children.length === 1;
+  var singleLocale = treeData.children.length === 1;
   var sectionIdx = 0;
 
-  TREE.children.forEach(function(loc, i) {
+  treeData.children.forEach(function(loc, i) {
     loc.children.forEach(function(pg) {
       var rawName = pg.name;
       var displayName = rawName.startsWith('/') ? rawName : '/' + rawName;
@@ -438,16 +611,14 @@ function showView(name) {
     cell.addEventListener('mouseleave', hideTip);
   }
 
-  squarify(flat, 0, 0, W, H);
-})();
+  if (flat.length) squarify(flat, 0, 0, W, H);
 
-// Treemap legend
-(function initTreemapLegend() {
+  // Update legend
   var elg = document.getElementById('legend');
-  var singleLocale = TREE.children.length === 1;
+  clearEl(elg);
   if (singleLocale) {
     var idx = 0;
-    TREE.children[0].children.forEach(function(sec) {
+    treeData.children[0].children.forEach(function(sec) {
       var em = mk('em', null, elg);
       em.style.setProperty('--c', P[idx % P.length]);
       var name = sec.name.startsWith('/') ? sec.name : '/' + sec.name;
@@ -455,14 +626,15 @@ function showView(name) {
       idx++;
     });
   } else {
-    TREE.children.forEach(function(loc, i) {
+    treeData.children.forEach(function(loc, i) {
       var em = mk('em', null, elg);
       em.style.setProperty('--c', P[i % P.length]);
       var count = loc.children.reduce(function(s, p) { return s + p.value; }, 0);
       em.appendChild(document.createTextNode(loc.name + ' (' + count + ')'));
     });
   }
-})();
+}
+// Treemap renders lazily on tab click (overview is now default)
 
 // Graph legend
 (function initGraphLegend() {
@@ -1518,7 +1690,9 @@ function renderPageList() {
 // ======================================================================
 function renderHealth() {
   var ct = document.getElementById('health-ct');
-  var score = STATS.health_score;
+  clearEl(ct);
+  var stats = STATE.locale === 'all' ? STATS : computeFilteredStats();
+  var score = stats.health_score;
 
   // Left: donut
   var donutWrap = mk('div', 'health-donut', ct);
@@ -1559,7 +1733,7 @@ function renderHealth() {
   var statusTitle = mk('div', 'health-section-title', statusSection);
   statusTitle.textContent = 'Status Distribution';
 
-  var st = STATS.status;
+  var st = stats.status;
   var total = st.ok + st.redirect + st.error + st.server_error;
   var segments = [
     {label:'2xx', count:st.ok, color:'#10b981'},
@@ -1593,13 +1767,13 @@ function renderHealth() {
   var depthTitle = mk('div', 'health-section-title', depthSection);
   depthTitle.textContent = 'Depth Distribution';
 
-  var depthEntries = Object.keys(STATS.depths).sort();
+  var depthEntries = Object.keys(stats.depths).sort();
   var maxDepthVal = 0;
-  depthEntries.forEach(function(k) { if (STATS.depths[k] > maxDepthVal) maxDepthVal = STATS.depths[k]; });
+  depthEntries.forEach(function(k) { if (stats.depths[k] > maxDepthVal) maxDepthVal = stats.depths[k]; });
 
   var depthBars = mk('div', 'depth-bars', depthSection);
   depthEntries.forEach(function(k, idx) {
-    var val = STATS.depths[k];
+    var val = stats.depths[k];
     var col = mk('div', 'depth-bar-col', depthBars);
     var valLabel = mk('div', 'depth-bar-val', col);
     valLabel.textContent = val;
@@ -1617,12 +1791,172 @@ function renderHealth() {
   crawlerTitle.textContent = 'AI Crawler Access';
 
   var crawlerGrid = mk('div', 'crawler-grid', crawlerSection);
-  Object.keys(STATS.crawlers).forEach(function(name) {
-    var allowed = STATS.crawlers[name];
+  Object.keys(stats.crawlers).forEach(function(name) {
+    var allowed = stats.crawlers[name];
     var item = mk('div', 'crawler-item', crawlerGrid);
     mk('div', 'crawler-dot ' + (allowed ? 'ok' : 'blocked'), item);
     var nameEl = mk('span', 'crawler-name', item);
     nameEl.textContent = name;
+  });
+}
+
+// ======================================================================
+// OVERVIEW — landing view with key metrics + top issues
+// ======================================================================
+function renderOverview() {
+  var ct = document.getElementById('overview-ct');
+  clearEl(ct);
+  var stats = STATE.locale === 'all' ? STATS : computeFilteredStats();
+  var pages = getFilteredPages();
+
+  // Status overview section
+  var statusSec = mk('div', 'ov-section', ct);
+  var statusTitle = mk('div', 'ov-title', statusSec);
+  statusTitle.textContent = 'Status Overview';
+  var statusGrid = mk('div', 'ov-stat-grid', statusSec);
+  var statusItems = [
+    {v: stats.status.ok, l: '2xx OK', c: '#10b981'},
+    {v: stats.status.redirect, l: '3xx Redirect', c: '#f59e0b'},
+    {v: stats.status.error, l: '4xx Error', c: '#ef4444'},
+    {v: stats.status.server_error, l: '5xx Server', c: '#8b5cf6'}
+  ];
+  statusItems.forEach(function(item) {
+    var cell = mk('div', 'ov-stat', statusGrid);
+    var val = mk('div', 'ov-stat-val', cell);
+    val.textContent = item.v.toLocaleString();
+    val.style.color = item.c;
+    var lab = mk('div', 'ov-stat-label', cell);
+    lab.textContent = item.l;
+  });
+
+  // Locale summary section
+  var localeSec = mk('div', 'ov-section', ct);
+  var localeTitle = mk('div', 'ov-title', localeSec);
+  localeTitle.textContent = 'Locales (' + ALL_LOCALES.length + ')';
+  var localeGrid = mk('div', 'ov-stat-grid', localeSec);
+  // Show top 8 locales by page count
+  var locSorted = ALL_LOCALES.slice().sort(function(a, b) { return (LOCALE_COUNTS[b] || 0) - (LOCALE_COUNTS[a] || 0); });
+  locSorted.slice(0, 8).forEach(function(loc) {
+    var cell = mk('div', 'ov-stat', localeGrid);
+    cell.style.cursor = 'pointer';
+    var val = mk('div', 'ov-stat-val', cell);
+    val.textContent = LOCALE_COUNTS[loc];
+    var lab = mk('div', 'ov-stat-label', cell);
+    lab.textContent = loc.toUpperCase();
+    cell.addEventListener('click', function() {
+      STATE.locale = loc;
+      document.querySelectorAll('.fpill').forEach(function(p) {
+        p.classList.toggle('active', p.dataset.locale === loc);
+      });
+      onLocaleChange();
+    });
+  });
+  if (ALL_LOCALES.length > 8) {
+    var moreCell = mk('div', 'ov-stat', localeGrid);
+    var moreVal = mk('div', 'ov-stat-val', moreCell);
+    moreVal.textContent = '+' + (ALL_LOCALES.length - 8);
+    moreVal.style.color = '#64748b';
+    var moreLab = mk('div', 'ov-stat-label', moreCell);
+    moreLab.textContent = 'More';
+  }
+
+  // Issues section
+  var issuesSec = mk('div', 'ov-section ov-section-full', ct);
+  var issuesTitle = mk('div', 'ov-title', issuesSec);
+  issuesTitle.textContent = 'Top Issues';
+  var issuesList = mk('div', 'ov-issues', issuesSec);
+
+  // Compute issues from data
+  var issues = [];
+  var errPages = pages.filter(function(p) { return p.status >= 400 && p.status < 500; });
+  var sePages = pages.filter(function(p) { return p.status >= 500; });
+  var deepPages = pages.filter(function(p) { return (p.depth || 0) >= 4; });
+  var noTitle = pages.filter(function(p) { return !p.title || p.title === ''; });
+  var soft404 = pages.filter(function(p) {
+    return p.title && p.title.toLowerCase().indexOf('not found') !== -1 && p.status >= 200 && p.status < 300;
+  });
+
+  if (sePages.length > 0) issues.push({sev:'critical', text:'Server errors (5xx)', count:sePages.length});
+  if (errPages.length > 0) issues.push({sev:'high', text:'Client errors (4xx)', count:errPages.length});
+  if (soft404.length > 0) issues.push({sev:'high', text:'Soft 404 pages', count:soft404.length});
+  if (noTitle.length > 0) issues.push({sev:'medium', text:'Pages without title', count:noTitle.length});
+  if (deepPages.length > 0) issues.push({sev:'medium', text:'Deep pages (depth 4+)', count:deepPages.length});
+  if (issues.length === 0) {
+    var allGood = mk('div', 'ov-issue', issuesList);
+    var goodDot = mk('div', 'ov-sev low', allGood);
+    var goodText = mk('div', 'ov-issue-text', allGood);
+    goodText.textContent = 'No critical issues detected';
+  }
+  issues.forEach(function(iss) {
+    var row = mk('div', 'ov-issue', issuesList);
+    mk('div', 'ov-sev ' + iss.sev, row);
+    var text = mk('div', 'ov-issue-text', row);
+    text.textContent = iss.text;
+    var count = mk('div', 'ov-issue-count', row);
+    count.textContent = iss.count;
+  });
+
+  // Depth distribution mini-section
+  var depthSec = mk('div', 'ov-section ov-section-full', ct);
+  var depthTitle = mk('div', 'ov-title', depthSec);
+  depthTitle.textContent = 'Crawl Depth';
+  var depthGrid = mk('div', 'ov-stat-grid', depthSec);
+  var depthKeys = Object.keys(stats.depths).sort();
+  depthKeys.forEach(function(k) {
+    var cell = mk('div', 'ov-stat', depthGrid);
+    var val = mk('div', 'ov-stat-val', cell);
+    val.textContent = stats.depths[k];
+    var lab = mk('div', 'ov-stat-label', cell);
+    lab.textContent = 'Depth ' + k;
+  });
+}
+
+// ======================================================================
+// LOCALE GRID — small-multiples health per locale
+// ======================================================================
+function renderLocaleGrid() {
+  var ct = document.getElementById('locale-ct');
+  clearEl(ct);
+
+  ALL_LOCALES.forEach(function(loc, i) {
+    var pages = LOCALE_INDEX[loc] || [];
+    var total = pages.length;
+    var errCount = 0;
+    pages.forEach(function(idx) {
+      if (PAGES[idx].status >= 400) errCount++;
+    });
+    var hs = total > 0 ? Math.round(((total - errCount) * 100) / total) : 100;
+    var scoreColor = hs >= 90 ? '#10b981' : hs >= 70 ? '#f59e0b' : '#ef4444';
+
+    var card = mk('div', 'lcard' + (STATE.locale === loc ? ' sel' : ''), ct);
+    card.style.borderTop = '3px solid ' + P[i % P.length];
+
+    var name = mk('div', 'lcard-name', card);
+    name.textContent = loc.toUpperCase();
+
+    var count = mk('div', 'lcard-ct', card);
+    count.textContent = total + ' pages';
+
+    var scoreEl = mk('div', 'lcard-score', card);
+    scoreEl.textContent = hs + '%';
+    scoreEl.style.color = scoreColor;
+
+    var label = mk('div', 'lcard-label', card);
+    label.textContent = errCount > 0 ? errCount + ' errors' : 'No errors';
+
+    var barWrap = mk('div', 'lcard-bar', card);
+    var fill = mk('div', 'lcard-fill', barWrap);
+    fill.style.width = hs + '%';
+    fill.style.background = scoreColor;
+
+    card.addEventListener('click', function() {
+      STATE.locale = STATE.locale === loc ? 'all' : loc;
+      document.querySelectorAll('.fpill').forEach(function(p) {
+        p.classList.toggle('active', p.dataset.locale === STATE.locale);
+      });
+      onLocaleChange();
+      renderLocaleGrid();
+    });
   });
 }
 
