@@ -19,7 +19,7 @@ ANY URL → sitemap parsing → page crawl → enrichment → analysis → 4 art
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) v0.64.0+
+- [Nika](https://github.com/supernovae-st/nika) v0.65.0+
 - An OpenAI API key (for 3 LLM calls: hreflang audit + mermaid tree + SEO report)
 
 ## Quick Start
