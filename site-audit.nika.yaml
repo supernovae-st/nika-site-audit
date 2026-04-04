@@ -107,15 +107,6 @@ tasks:
         data: "{{with.data}}"
         query: "$..loc"
 
-  - id: homepage_urls_raw
-    depends_on: [fetch_homepage]
-    with: { data: $fetch_homepage }
-    invoke:
-      tool: "nika:map"
-      params:
-        array: "{{with.data.links}}"
-        selector: "url"
-
   # Filter homepage links to same-domain only (prevents crawling external sites)
   - id: homepage_link_objects
     depends_on: [fetch_homepage]
@@ -1056,4 +1047,4 @@ tasks:
           var PAGES = {{with.pages | to_json}};
           var STATS = {{with.stats | to_json}};
           var CHART = "";
-          var IMAGES = [];
+          var IMAGES = [{{with.header_img | default('') | length}} > 0 ? {src:"data:image/png;base64," + {{with.header_img | to_json}}, caption:"Site Audit — AI Generated Banner"} : null, {{with.metrics_img | default('') | length}} > 0 ? {src:"data:image/png;base64," + {{with.metrics_img | to_json}}, caption:"Metrics Overview — AI Generated"} : null].filter(Boolean);
