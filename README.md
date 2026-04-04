@@ -46,24 +46,30 @@ cd nika-site-audit
 
 ### 3. Set your API keys
 
-Three API keys, only the first is required:
+Nika stores keys in an **encrypted vault** — set once, persists across reboots.
 
 | Key | Required | Purpose | Get it at |
 |-----|----------|---------|-----------|
-| `OPENAI_API_KEY` | **Yes** | LLM for report, analysis, mermaid | [platform.openai.com](https://platform.openai.com) |
-| `GEMINI_API_KEY` | Optional | Nano Banana AI image generation | [ai.dev](https://ai.dev) (enable billing) |
-| `ELEVENLABS_API_KEY` | Optional | Podcast audio narration (TTS) | [elevenlabs.io](https://elevenlabs.io) |
+| OpenAI | **Yes** | LLM for report, analysis, mermaid | [platform.openai.com](https://platform.openai.com) |
+| Gemini | Optional | Nano Banana AI image generation | [ai.dev](https://ai.dev) (enable billing) |
+| ElevenLabs | Optional | Podcast audio narration (TTS) | [elevenlabs.io](https://elevenlabs.io) |
 
 ```bash
-export OPENAI_API_KEY=sk-proj-...
-export GEMINI_API_KEY=AIzaSy...        # optional, for AI images
-export ELEVENLABS_API_KEY=sk_...       # optional, for podcast audio
+# Required — LLM provider (interactive, key is hidden)
+nika provider set openai
+
+# Optional — AI image generation (Nano Banana)
+nika provider set gemini
+
+# Optional — podcast audio
+nika vault set elevenlabs --field api_key=sk_your_key_here
 ```
 
-Verify:
+Verify everything:
 
 ```bash
-nika provider list
+nika provider list   # shows ✓/✗ for each provider
+nika vault list      # shows stored credentials
 ```
 
 ### 4. Run the audit
