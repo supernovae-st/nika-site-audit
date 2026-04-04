@@ -767,6 +767,12 @@ tasks:
   - id: html_dashboard
     description: "Inject data variables into dashboard HTML template"
     depends_on: [write_dashboard_js]
-    exec:
-      command: "awk '/\\/\\/ CONSTANTS & HELPERS/{skip=0} !skip{print} /\\/\\/ DATA —/{skip=1; while((getline line < \"./artifacts/tmp/dashboard-data.js\")>0) print line; print \"\"}' ./templates/dashboard.html > ./artifacts/audit-dashboard.html"
-      shell: true
+    with: { data: $write_dashboard_js }
+    invoke:
+      tool: "nika:inject"
+      params:
+        template: "./templates/dashboard.html"
+        output: "./artifacts/audit-dashboard.html"
+        start_marker: "// DATA —"
+        end_marker: "// CONSTANTS & HELPERS"
+        content: "{{with.data}}"
