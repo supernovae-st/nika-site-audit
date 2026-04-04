@@ -591,29 +591,26 @@ tasks:
         7. Add a subgraph for "Issues Found" showing broken page summary
         8. Max 80 nodes (be selective, show the most important structure)
 
-        FORMAT — return a complete markdown document:
-        ```markdown
-        # Site Structure — {{inputs.url}}
+        FORMAT — return PLAIN markdown (NO outer code fence wrapper, just raw markdown):
+
+        Start the document directly with a heading:
+
+        # Site Structure — [domain]
 
         > Crawled **N** pages across **N** locales. Health score: **N%**
 
-        ```mermaid
+        Then include the mermaid diagram in a SINGLE code fence:
+
+        (opening triple backtick)mermaid
         graph TD
           classDef error fill:#ef4444,stroke:#dc2626,color:#fff
           classDef locale fill:#6366f1,stroke:#4f46e5,color:#fff
           classDef section fill:#1e2130,stroke:#2d3148,color:#e2e8f0
+          root["domain N pages"] --> en["EN Np"]:::locale
+        (closing triple backtick)
 
-          root["🌐 domain.com<br/>N pages"]
-          root --> en["🇬🇧 EN<br/>N pages"]:::locale
-          root --> fr["🇫🇷 FR<br/>N pages"]:::locale
-
-          en --> en_blog["📄 /blog<br/>N pages"]:::section
-          en --> en_docs["📄 /docs<br/>N pages"]:::section
-
-          subgraph issues["❌ Issues Found"]
-            broken["N broken pages"]:::error
-          end
-        ``` (triple backtick)
+        CRITICAL: Do NOT wrap the entire output in a markdown code fence.
+        The output IS markdown, not a code block containing markdown.
 
         ## Locale Breakdown
 
@@ -729,7 +726,12 @@ tasks:
       prompt: |
         You are a senior SEO consultant writing a comprehensive, data-driven site audit report.
         Write a LONG, detailed, professional markdown report (at least 3000 words).
-        Use the SEO auditor skill for scoring methodology.
+
+        HEALTH SCORE FORMULA (use this, NOT the skill scoring):
+        health_score = ((total_pages - error_pages) / total_pages) * 100
+        This gives the percentage of pages returning successful responses (2xx/3xx).
+        Grade: A (95-100), B (85-94), C (70-84), D (50-69), F (<50)
+        Do NOT use the skill's per-page penalty scoring — use this simple formula.
 
         ═══════════════════════════════════════════════════════════════
         AUDIT DATA
@@ -740,6 +742,11 @@ tasks:
         LOCALES ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
         HREFLANG PAGES: {{with.hreflang_pages | length}}
         CRAWL STATS: {{with.stats | to_json}}
+        HEALTH SCORE: {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 400) | length}} healthy of {{with.pages | length}} total = {{with.pages | where('status', 'gte', 400) | length}} errors
+
+        IMPORTANT — LOCALE PAGE COUNTS (use these exact numbers in the locale table):
+        {{with.by_locale | keys | to_json}}
+        Pages per locale: {{with.by_locale | jq('[to_entries[] | {locale: .key, pages: (.value | length)}] | sort_by(.pages) | reverse')}}
 
         STATUS DISTRIBUTION:
         - 2xx OK:        {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}} pages
@@ -992,6 +999,11 @@ tasks:
               server_error: ([$d.pages[] | select((.status // 200) >= 500)] | length)
             },
             depths: ([$d.pages[] | .depth // 0 | tostring] | group_by(.) | map({(.[0]): length}) | add // {}),
+            perf: {
+              avg_ms: ([$d.pages[] | .elapsed_ms // 0] | if length > 0 then (add / length | round) else 0 end),
+              max_ms: ([$d.pages[] | .elapsed_ms // 0] | max // 0),
+              slow_count: ([$d.pages[] | select((.elapsed_ms // 0) > 2000)] | length)
+            },
             crawlers: {
               Googlebot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Googlebot") | not) else true end),
               Bingbot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Bingbot") | not) else true end),

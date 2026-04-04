@@ -301,6 +301,8 @@ var STATE = { locale: 'all' };
 function clearEl(el) { while (el.firstChild) el.removeChild(el.firstChild); }
 
 // Build locale index at load time for O(1) filtering
+// Filter out non-locale path segments (cdn-cgi, qr-code, etc.)
+var FAKE_LOCALES = {'cdn-cgi':1,'qr-code':1,'qr-kod':1,'qr-kode':1,'qr-koodi':1};
 var LOCALE_INDEX = {};
 var LOCALE_COUNTS = {};
 PAGES.forEach(function(p, i) {
@@ -309,7 +311,7 @@ PAGES.forEach(function(p, i) {
   LOCALE_INDEX[loc].push(i);
   LOCALE_COUNTS[loc] = (LOCALE_COUNTS[loc] || 0) + 1;
 });
-var ALL_LOCALES = Object.keys(LOCALE_COUNTS).sort();
+var ALL_LOCALES = Object.keys(LOCALE_COUNTS).filter(function(l) { return !FAKE_LOCALES[l]; }).sort();
 
 function getFilteredPages() {
   if (STATE.locale === 'all') return PAGES;
