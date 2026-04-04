@@ -102,10 +102,10 @@ tasks:
     depends_on: [fetch_sub_sitemaps]
     with: { data: $fetch_sub_sitemaps }
     invoke:
-      tool: "nika:json_query"
+      tool: "nika:jq"
       params:
         data: "{{with.data}}"
-        query: "$..loc"
+        expr: "[.. | .loc? // empty]"
 
   # Filter homepage links to same-domain only (prevents crawling external sites)
   - id: homepage_link_objects
@@ -187,10 +187,10 @@ tasks:
     depends_on: [all_urls]
     with: { urls: $all_urls }
     invoke:
-      tool: "nika:json_query"
+      tool: "nika:jq"
       params:
         data: "{{with.urls}}"
-        query: "$[0:20]"
+        expr: ".[0:20]"
 
   # 5b. Fetch links from 20 sample pages
   - id: sample_links
@@ -212,10 +212,10 @@ tasks:
     depends_on: [sample_links]
     with: { results: $sample_links }
     invoke:
-      tool: "nika:json_query"
+      tool: "nika:jq"
       params:
         data: "{{with.results}}"
-        query: "$..links[*]"
+        expr: "[.. | .links? // empty | .[]]"
 
   # 5d. Filter to same-domain link objects
   - id: internal_link_objects
