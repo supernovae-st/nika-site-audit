@@ -82,3 +82,35 @@ Always structure findings as:
 - Redirect chains found
 - Hreflang coverage and issues
 - Average/max page load time
+- AI crawler access (blocked/allowed/not mentioned per bot)
+- Citability score and breakdown
+- llms.txt status
+
+## GEO (Generative Engine Optimization) Rules
+
+AI search engines (ChatGPT, Perplexity, Gemini, Claude Search) now drive significant discovery traffic. GEO is as important as traditional SEO.
+
+### AI Crawler Access
+- CRITICAL if any major AI crawlers are blocked in robots.txt
+- 14 known AI crawlers: GPTBot, ChatGPT-User, OAI-SearchBot, Google-Extended, ClaudeBot, anthropic-ai, PerplexityBot, Amazonbot, Applebot-Extended, cohere-ai, Bytespider, CCBot, Meta-ExternalFetcher, FacebookBot
+- Blocking = invisible to that AI engine's search results
+- "not_mentioned" in robots.txt = allowed by default
+
+### llms.txt
+- Emerging standard for AI content discovery (like robots.txt for AI)
+- MEDIUM if absent, LOW if present but incomplete
+- Should describe: site purpose, key content areas, API documentation if applicable
+
+### Citability Score (0-100)
+- Clear, descriptive page titles: 0-20
+- Authoritative, factual content: 0-20
+- Answer-structured content (FAQ, how-to, definitions): 0-20
+- Logical site structure: 0-15
+- llms.txt present and complete: 0-10
+- AI crawlers not blocked: 0-15
+
+### Severity for GEO Issues
+- CRITICAL: Blocking major AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended)
+- HIGH: Blocking secondary AI crawlers, no structured data for AI
+- MEDIUM: No llms.txt, poor content structure for AI citation
+- LOW: Minor citability improvements, incomplete llms.txt
