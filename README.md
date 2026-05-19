@@ -4,27 +4,31 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 
 **100% native. Zero Python. Zero jq. Zero external dependencies.**
 
-> **Status (2026-04):** this workflow was authored against the legacy
-> engine (v0.65.x – v0.72.x). The engine is now in the **Diamond
-> rewrite** on the `nika-diamond` branch (v0.80.0, 6 / 40-42 foundation
-> crates admitted) — the `nika` CLI is not shipping new binaries during
-> the v0.9x rebuild. This repo is preserved as a **reference workflow
-> example**; expect to re-run it against the v0.9x release once the
-> public CLI re-admits. The Homebrew tap still installs legacy
-> v0.72.0 for users who need a working `nika` today.
+> **Status (2026-05):** this workflow runs on the **`brouillon`** engine —
+> the last functional pre-Diamond Nika (`brouillon` branch, schema
+> `nika/workflow@0.12`). The engine's clean rewrite ("Diamond") is in
+> progress on the `main` branch and is not the target here. Build the
+> `brouillon` engine from source (see install below) and run this
+> workflow with that binary. It is the canonical end-to-end reference
+> workflow — crawl, enrich, analyze, report — and the template for
+> larger scrape-and-analyze pipelines.
 
 ## Quick Start (A to Z)
 
-### 1. Install Nika
+### 1. Build the Nika engine
+
+This workflow targets the **`brouillon`** engine. Build it from source:
 
 ```bash
-brew install supernovae-st/tap/nika
-nika --version   # workflow tested against v0.65.1 – v0.72.0 (legacy)
+git clone -b brouillon https://github.com/supernovae-st/nika.git
+cd nika/tools && cargo build --release -p nika
+sudo cp target/release/nika /usr/local/bin/nika
+nika --version
 ```
 
-> **Tested range:** legacy v0.65.1 – v0.72.0. Re-verification against
-> the Diamond v0.9x release is pending. Uses `nika:jq`,
-> `nika:tree_data`, `nika:inject`, encrypted vault, `$binding ?? fallback`.
+> Uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
+> `nika:tree_data`, `nika:inject`, the encrypted vault, and
+> `$binding ?? fallback`. Schema `nika/workflow@0.12`.
 
 <details>
 <summary>Other install methods (Linux, Intel Mac, source)</summary>
@@ -160,7 +164,7 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) — authored against legacy v0.65.1 – v0.72.0; re-verification against Diamond v0.9x pending
+- [Nika](https://github.com/supernovae-st/nika) — the `brouillon` engine, built from source (schema `nika/workflow@0.12`)
 - **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
 - **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
 - **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
