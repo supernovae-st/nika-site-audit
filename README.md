@@ -4,55 +4,35 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 
 **100% native. Zero Python. Zero jq. Zero external dependencies.**
 
-> **Status (2026-05):** this workflow runs on the **`brouillon`** engine —
-> the last functional pre-Diamond Nika (`brouillon` branch, schema
-> `nika/workflow@0.12`). The engine's clean rewrite ("Diamond") is in
-> progress on the `main` branch and is not the target here. Build the
-> `brouillon` engine from source (see install below) and run this
-> workflow with that binary. It is the canonical end-to-end reference
-> workflow — crawl, enrich, analyze, report — and the template for
-> larger scrape-and-analyze pipelines.
+> **Status:** this is the **canonical end-to-end reference workflow** for
+> Nika — crawl, enrich, analyze, report — and the template for larger
+> scrape-and-analyze pipelines. It was authored against the legacy Nika
+> engine (now kept as a private reference) using the legacy
+> `nika/workflow@0.12` schema. The engine is being rebuilt in the open as
+> the [Diamond rewrite](https://github.com/supernovae-st/nika) (`main`);
+> the runnable single-binary engine + a `nika: v1`-compatible version of
+> this workflow ship at **v0.90**. Until then, read it as the reference
+> for what a real Nika workflow looks like.
 
 ## Quick Start (A to Z)
 
-### 1. Build the Nika engine
+### 1. Get the Nika engine
 
-This workflow targets the **`brouillon`** engine. Build it from source:
+This workflow needs the `nika` binary. The engine is mid-[Diamond
+rewrite](https://github.com/supernovae-st/nika) and is **pre-launch** —
+the runnable single binary ships at **v0.90** via the
+[Homebrew tap](https://github.com/supernovae-st/homebrew-tap)
+(`brew install supernovae-st/tap/nika`), `cargo install nika`, and the
+`curl | sh` installer, all documented at
+[docs.nika.sh](https://docs.nika.sh) when it tags. The legacy engine this
+workflow was authored against is now a private reference, so until v0.90
+this repo is a **read-only reference** for the workflow shape below.
 
-```bash
-git clone -b brouillon https://github.com/supernovae-st/nika.git
-cd nika/tools && cargo build --release -p nika
-sudo cp target/release/nika /usr/local/bin/nika
-nika --version
-```
-
-> Uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
+> The workflow uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
 > `nika:tree_data`, `nika:inject`, the encrypted vault, and
-> `$binding ?? fallback`. Schema `nika/workflow@0.12`.
-
-<details>
-<summary>Other install methods (Linux, Intel Mac, source)</summary>
-
-```bash
-# macOS (Apple Silicon)
-curl -fsSL https://github.com/supernovae-st/nika/releases/download/v0.65.1/nika-macos-arm64-0.65.1.tar.gz | tar xz
-sudo cp nika-macos-arm64-0.65.1/nika /usr/local/bin/
-
-# macOS (Intel)
-curl -fsSL https://github.com/supernovae-st/nika/releases/download/v0.65.1/nika-macos-x64-0.65.1.tar.gz | tar xz
-sudo cp nika-macos-x64-0.65.1/nika /usr/local/bin/
-
-# Linux (x64)
-curl -fsSL https://github.com/supernovae-st/nika/releases/download/v0.65.1/nika-linux-x64-0.65.1.tar.gz | tar xz
-sudo cp nika-linux-x64-0.65.1/nika /usr/local/bin/
-
-# From source (Diamond branch v0.9x — once re-admitted)
-git clone https://github.com/supernovae-st/nika.git
-cd nika && cargo build --release -p nika
-sudo cp target/release/nika /usr/local/bin/
-```
-
-</details>
+> `$binding ?? fallback` (legacy schema `nika/workflow@0.12` → the
+> canonical envelope is `nika: v1`, see the
+> [spec](https://github.com/supernovae-st/nika-spec)).
 
 ### 2. Clone the project
 
@@ -164,7 +144,7 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) — the `brouillon` engine, built from source (schema `nika/workflow@0.12`)
+- [Nika](https://github.com/supernovae-st/nika) — the engine (pre-launch · runnable binary at v0.90 · legacy schema `nika/workflow@0.12` → canonical [`nika: v1`](https://github.com/supernovae-st/nika-spec))
 - **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
 - **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
 - **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
