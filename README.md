@@ -6,8 +6,8 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 
 > **Status:** this is the **canonical end-to-end reference workflow** for
 > Nika — crawl, enrich, analyze, report — and the template for larger
-> scrape-and-analyze pipelines. The engine is pre-launch; its first complete
-> public release tags as `v0.90`. Until then, read this as the reference for
+> scrape-and-analyze pipelines. The engine is pre-launch; the first
+> runnable public binary tags as `v0.81.0`. Until then, read this as the reference for
 > what a real Nika workflow looks like.
 
 ## Quick Start (A to Z)
@@ -15,7 +15,7 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 ### 1. Get the Nika engine
 
 This workflow needs the `nika` binary. The engine is **pre-launch** — the
-runnable single binary ships at **v0.90** via the
+runnable single binary ships at **v0.81.0** via the
 [Homebrew tap](https://github.com/supernovae-st/homebrew-tap)
 (`brew install supernovae-st/tap/nika`), `cargo install nika`, and the
 `curl | sh` installer, all documented at
@@ -25,7 +25,10 @@ runnable single binary ships at **v0.90** via the
 > The workflow uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
 > `nika:tree_data`, `nika:inject`, the encrypted vault, and
 > `$binding ?? fallback`. The envelope is `nika: v1` (see the
-> [spec](https://github.com/supernovae-st/nika-spec)).
+> [spec](https://github.com/supernovae-st/nika-spec)). ⚠️ Written against the
+> pre-consolidation builtin surface — stdlib v0.1 consolidated several of
+> these into `nika:jq` recipes; a modernization pass to the v0.1 surface
+> lands before the engine tags (see `AGENTS.md`).
 
 ### 2. Clone the project
 
@@ -137,7 +140,7 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) — the engine (pre-launch · binary tags at v0.90)
+- [Nika](https://github.com/supernovae-st/nika) — the engine (pre-launch · the first runnable binary tags at v0.81.0)
 - **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
 - **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
 - **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
