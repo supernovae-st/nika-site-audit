@@ -4,11 +4,14 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 
 **100% native. Zero Python. Zero jq. Zero external dependencies.**
 
-> **Status:** this is the **canonical end-to-end reference workflow** for
-> Nika — crawl, enrich, analyze, report — and the template for larger
-> scrape-and-analyze pipelines. The engine is pre-launch; the first
-> runnable public binary tags as `v0.81.0`. Until then, read this as the reference for
-> what a real Nika workflow looks like.
+> ⚠️ **Status: LEGACY v0.79 demo.** The workflow files and traces here
+> run against the pre-rewrite `nikab` binary and use the **legacy syntax**
+> (it predates the `nika: v1` envelope, the 4-verb model and the `${{ }}`
+> CEL bindings of the [public spec](https://github.com/supernovae-st/nika-spec)).
+> Keep it as a historical end-to-end demo of what a crawl-enrich-analyze
+> pipeline looks like — **do not learn the syntax from this repo.**
+> A spec-true rewrite ships with the first supported release (`v0.81.0`,
+> summer 2026).
 
 ## Quick Start (A to Z)
 
