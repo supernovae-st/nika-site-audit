@@ -10,7 +10,7 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 > CEL bindings of the [public spec](https://github.com/supernovae-st/nika-spec)).
 > Keep it as a historical end-to-end demo of what a crawl-enrich-analyze
 > pipeline looks like — **do not learn the syntax from this repo.**
-> A spec-true rewrite ships with the first supported release (`v0.81.0`,
+> A spec-true rewrite ships with the first public release (`1.0.0`,
 > summer 2026).
 
 ## Quick Start (A to Z)
@@ -18,7 +18,7 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 ### 1. Get the Nika engine
 
 This workflow needs the `nika` binary. The engine is **pre-launch** — the
-runnable single binary ships at **v0.81.0** via the
+runnable single binary ships at **1.0.0** via the
 [Homebrew tap](https://github.com/supernovae-st/homebrew-tap)
 (`brew install supernovae-st/tap/nika`), `cargo install nika`, and the
 `curl | sh` installer, all documented at
@@ -143,7 +143,7 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) — the engine (pre-launch · the first runnable binary tags at v0.81.0)
+- [Nika](https://github.com/supernovae-st/nika) — the engine (pre-launch · the first public release tags at 1.0.0)
 - **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
 - **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
 - **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
