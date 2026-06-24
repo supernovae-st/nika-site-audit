@@ -22,8 +22,9 @@ locales, validate hreflang, generate dashboards and reports. Read it as
   the spec's builtins doc). A modernization pass to the v0.1 surface is
   queued before the engine tags. Do NOT treat builtins used here as
   canonical — `canon.yaml` in nika-spec is the truth.
-- The engine is **pre-launch** — the first public release tags
-  `1.0.0`. Until then this repo is a read-only reference.
+- The engine has a public release-candidate (`0.90.0`) and continues toward
+  the 1.0 public API lock. This repo remains a read-only reference until its
+  workflow is modernized to the current stdlib surface.
 
 ## Editing rules
 

@@ -10,28 +10,27 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 > CEL bindings of the [public spec](https://github.com/supernovae-st/nika-spec)).
 > Keep it as a historical end-to-end demo of what a crawl-enrich-analyze
 > pipeline looks like — **do not learn the syntax from this repo.**
-> A spec-true rewrite ships with the first public release (`1.0.0`,
-> summer 2026).
+> A spec-true rewrite is still pending; use this repo as historical context,
+> not as current syntax guidance.
 
 ## Quick Start (A to Z)
 
 ### 1. Get the Nika engine
 
-This workflow needs the `nika` binary. The engine is **pre-launch** — the
-runnable single binary ships at **1.0.0** via the
+This legacy workflow needs the pre-rewrite `nikab` binary, not the current
+`nika` release-candidate. Install the current engine from the
 [Homebrew tap](https://github.com/supernovae-st/homebrew-tap)
-(`brew install supernovae-st/tap/nika`), `cargo install nika`, and the
-`curl | sh` installer, all documented at
-[docs.nika.sh](https://docs.nika.sh) when it tags. Until then this repo is a
-**read-only reference** for the workflow shape below.
+(`brew install supernovae-st/tap/nika`) or `install.sh` for modern
+`.nika.yaml` files; keep this repo as a **read-only reference** until it is
+rewritten against the current stdlib surface.
 
 > The workflow uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
 > `nika:tree_data`, `nika:inject`, the encrypted vault, and
 > `$binding ?? fallback`. The envelope is `nika: v1` (see the
 > [spec](https://github.com/supernovae-st/nika-spec)). ⚠️ Written against the
 > pre-consolidation builtin surface — stdlib v0.1 consolidated several of
-> these into `nika:jq` recipes; a modernization pass to the v0.1 surface
-> lands before the engine tags (see `AGENTS.md`).
+> these into `nika:jq` recipes; a modernization pass to the v0.1 surface is
+> still queued (see `AGENTS.md`).
 
 ### 2. Clone the project
 
@@ -143,7 +142,7 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) — the engine (pre-launch · the first public release tags at 1.0.0)
+- [Nika](https://github.com/supernovae-st/nika) — the engine (0.90.0 release-candidate · 1.0 public API lock when gates are green)
 - **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
 - **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
 - **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
