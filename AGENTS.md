@@ -11,7 +11,8 @@ locales, validate hreflang, generate dashboards and reports. Read it as
 
 ## Load-bearing facts (verify in-repo · never from memory)
 
-- The envelope is `nika: v1` · the language spec is
+- This legacy workflow's envelope is `schema: nika/workflow@0.12` · the
+  current language (envelope `nika: v1`) is defined in
   [`supernovae-st/nika-spec`](https://github.com/supernovae-st/nika-spec)
   (Apache-2.0) · counts live in its `canon.yaml` (the SSOT — never
   hardcode them in prose).
