@@ -1,13 +1,16 @@
-# AGENTS.md — nika-site-audit (canonical reference workflow)
+# AGENTS.md — nika-site-audit (legacy-era demonstration · read-only)
 
 Vendor-neutral agent entry per the AGENTS.md convention (agents.md).
 
 ## What this repo is
 
-The **canonical end-to-end reference workflow** for
-[Nika](https://github.com/supernovae-st/nika) — crawl a site, detect
-locales, validate hreflang, generate dashboards and reports. Read it as
-« what a real Nika workflow looks like ».
+A **legacy-era demonstration** of a large real-world Nika workflow —
+crawl a site, detect locales, validate hreflang, generate dashboards
+and reports. It shows the SCALE a workflow can reach; it does NOT show
+current syntax. **Never learn the language from this repo** — the
+current language lives in
+[`supernovae-st/nika-spec`](https://github.com/supernovae-st/nika-spec)
+and its showcase examples ship inside the engine (`nika examples`).
 
 ## Load-bearing facts (verify in-repo · never from memory)
 

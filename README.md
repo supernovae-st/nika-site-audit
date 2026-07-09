@@ -144,7 +144,7 @@ A global locale filter bar sits above all tabs. Click any locale pill to filter 
 
 ## Requirements
 
-- [Nika](https://github.com/supernovae-st/nika) — the engine (0.90.0 release-candidate · 1.0 public API lock when gates are green)
+- [Nika](https://github.com/supernovae-st/nika) — the engine. ⚠ This legacy workflow's `schema: nika/workflow@0.12` envelope predates the current `nika: v1` language and does **not** run on current binaries — the run numbers above are the recorded legacy-era results, kept as evidence of scale
 - **Required**: OpenAI API key — 5 LLM calls: report, GEO analysis, hreflang audit, mermaid, audio script
 - **Optional**: Gemini API key with billing — Nano Banana image generation (free tier has 0 quota for images)
 - **Optional**: ElevenLabs API key — podcast audio narration (~$1 per audit)
