@@ -35,9 +35,10 @@ rewritten against the current stdlib surface.
 
 > The workflow uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
 > `nika:tree_data`, `nika:inject`, the encrypted vault, and
-> `$binding ?? fallback`. This legacy file's envelope is
-> `schema: nika/workflow@0.12` — the current language (envelope `nika: v1`)
-> is defined in the [spec](https://github.com/supernovae-st/nika-spec).
+> `$binding ?? fallback`. This legacy file's envelope is the retired
+> legacy form `schema: nika/workflow@0.12` — the current language
+> (envelope `nika: v1`) is defined in the
+> [spec](https://github.com/supernovae-st/nika-spec).
 > ⚠️ Written against the
 > pre-consolidation builtin surface — stdlib v0.1 consolidated several of
 > these into `nika:jq` recipes; a modernization pass to the v0.1 surface is
