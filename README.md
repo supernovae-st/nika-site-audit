@@ -1,3 +1,12 @@
+<p align="center">
+  <a href="https://nika.sh">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://nika.sh/brand/nika-logo-dark.svg">
+      <img src="https://nika.sh/brand/nika-logo-light.svg" alt="Nika" width="220">
+    </picture>
+  </a>
+</p>
+
 # Nika Site Audit
 
 Full website audit workflow powered by [Nika](https://github.com/supernovae-st/nika) — crawl any site, detect locales, validate hreflang, generate interactive dashboards, AI images, and podcast narration.
