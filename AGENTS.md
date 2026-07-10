@@ -26,9 +26,14 @@ and its showcase examples ship inside the engine (`nika examples`).
   the spec's builtins doc). A modernization pass to the v0.1 surface is
   queued before the engine tags. Do NOT treat builtins used here as
   canonical — `canon.yaml` in nika-spec is the truth.
-- The engine has a public release-candidate (`0.90.0`) and continues toward
-  the 1.0 public API lock. This repo remains a read-only reference until its
-  workflow is modernized to the current stdlib surface.
+- The engine ships real releases (v0.99.0 as of 2026-07-10 — brew
+  `supernovae-st/tap/nika` · 27 builtins · check-before-run with the
+  MODELS rung; the live number is `nika --version`, never this file).
+  This repo remains a read-only reference until its workflow is
+  modernized: `site-audit.nika.yaml` predates the v1 envelope and
+  PARSE-fails on current engines (`schema` is no longer an envelope
+  field) — probed 2026-07-10, expected, and exactly why the note above
+  says do NOT treat this repo's surface as canonical.
 
 ## Editing rules
 
