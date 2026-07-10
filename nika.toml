@@ -2,9 +2,9 @@
 name = "nika-site-audit"
 description = "Full site audit workflow — crawl, enrich, analyze, report"
 
-[provider]
-default = "openai"
-model = "gpt-5.2"
+# Provider/model live IN the workflow envelope on the v1 surface
+# (`model: mock/echo` offline default · --model overrides at run) —
+# a config-level default here belonged to the legacy dialect.
 
 [tools]
 allow_exec = true
