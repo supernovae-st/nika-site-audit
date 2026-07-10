@@ -29,12 +29,14 @@ permits:
   net:
     http: ["qrcode-ai.com"] # widen with the audited host when overriding vars.url
   fs:
+    read: ["skills/**"]
     write: ["out/**"]
   tools:
     [
       "nika:fetch",
       "nika:jq",
       "nika:chart",
+      "nika:read",
       "nika:write",
       "nika:log",
     ]
@@ -101,17 +103,31 @@ tasks:
         input:
           pages: "${{ tasks.crawl.output }}"
           sitemap: "${{ tasks.sitemap.output }}"
+        # The health score follows skills/seo-auditor.md §Scoring — the
+        # rows the crawl digest can PROVE (title · description · status ·
+        # thin text · long title); per-group rules (duplicates · orphans ·
+        # chains) need a full crawl, out of the 8-page sample's honesty.
         expression: >-
-          (.pages.pages // []) as $p |
+          (.pages.pages // []) as $p | ($p | length) as $n |
           {
-            pages_sampled: ($p | length),
+            pages_sampled: $n,
             with_title: [$p[] | select((.title // "") | length > 0)] | length,
             with_description: [$p[] | select((.description // "") | length > 0)] | length,
+            broken: [$p[] | select((.status // 200) >= 400)] | length,
+            thin: [$p[] | select((.text // "") | length < 200)] | length,
+            long_titles: [$p[] | select((.title // "") | length > 60)] | length,
             sitemap_urls: (.sitemap | if type == "array" then length else 0 end),
+            health: ([100
+              - (($n - ([$p[] | select((.title // "") | length > 0)] | length)) * 3)
+              - (($n - ([$p[] | select((.description // "") | length > 0)] | length)) * 2)
+              - (([$p[] | select((.status // 200) >= 400)] | length) * 5)
+              - (([$p[] | select((.text // "") | length < 200)] | length) * 1)
+              - (([$p[] | select((.title // "") | length > 60)] | length) * 1)
+              , 0] | max),
             seo_points: (
-              (if ($p | length) == 0 then 0 else
-                ((([$p[] | select((.title // "") | length > 0)] | length) * 50 / ($p | length)) +
-                 (([$p[] | select((.description // "") | length > 0)] | length) * 30 / ($p | length))) end) +
+              (if $n == 0 then 0 else
+                ((([$p[] | select((.title // "") | length > 0)] | length) * 50 / $n) +
+                 (([$p[] | select((.description // "") | length > 0)] | length) * 30 / $n)) end) +
               (if (.sitemap | if type == "array" then length else 0 end) > 0 then 20 else 0 end)
             ) | floor
           }
@@ -125,6 +141,7 @@ tasks:
         data:
           - { axis: "GEO readiness", points: "${{ tasks.geo_score.output.geo_points }}" }
           - { axis: "SEO hygiene", points: "${{ tasks.seo_score.output.seo_points }}" }
+          - { axis: "Health (rubric)", points: "${{ tasks.seo_score.output.health }}" }
         semantics: { axis: category, points: count }
         chart:
           {
@@ -136,14 +153,25 @@ tasks:
         out: out/scorecard.svg
 
   # ── ONE bounded model call — the narrated verdict ──────────────────
+  # The auditor rubric (skills/seo-auditor.md · scoring rules · severity
+  # vocabulary) rides as the SYSTEM prompt — read at run, never inlined
+  # (the v1 form of the legacy `skills:` auto-injection).
+  - id: rubric
+    invoke:
+      tool: "nika:read"
+      args: { path: skills/seo-auditor.md }
+
   - id: verdict
-    depends_on: [geo_score, seo_score]
+    depends_on: [geo_score, seo_score, rubric]
     infer:
+      system: "${{ tasks.rubric.output }}"
       prompt: >-
-        You are an SEO/GEO auditor. Facts (deterministic, already computed):
+        Facts (deterministic, already computed by the workflow):
         GEO ${{ tasks.geo_score.output }} · SEO ${{ tasks.seo_score.output }}.
-        Write a 3-sentence verdict: the single biggest gap, the quickest win,
-        and one structural recommendation. Plain prose, no headings.
+        Using the scoring rules and severity vocabulary above, write a
+        3-sentence verdict: the single biggest gap (with its severity
+        class), the quickest win, and one structural recommendation.
+        Plain prose, no headings.
       max_tokens: 300
 
   # ── The report — one HTML artifact, receipts inline ────────────────
