@@ -1,0 +1,16 @@
+{
+  "geo": {
+    "ai_crawlers_addressed": true,
+    "geo_points": 100,
+    "has_llmstxt": true,
+    "has_robots": true
+  },
+  "seo": {
+    "pages_sampled": 8,
+    "seo_points": 100,
+    "sitemap_urls": 48,
+    "with_description": 8,
+    "with_title": 8
+  },
+  "verdict": "mock(echo) · You are an SEO/GEO auditor. Facts (deterministic, already computed): GEO {\"ai_crawlers_addressed\":true,\"geo_points\":100,\"has_llmstxt\":true,\"has_robots\":true} · SEO {\"pages_sampled\":8,\"seo_points\":100,\"sitemap_urls\":48,\"with_description\":8,\"with_title\":8}. Write a 3-sentence verdict: the single biggest gap, the quickest win, and one structural recommendation. Plain prose, no headings."
+}

@@ -1,1072 +1,181 @@
-schema: nika/workflow@0.12
-workflow: site-audit-v10
-description: "Professional SEO + GEO site audit — crawl, enrich, analyze, chart, report"
-provider: openai
-model: gpt-5.2
+# SPDX-License-Identifier: Apache-2.0
+# yaml-language-server: $schema=https://nika.sh/spec/v1/workflow.schema.json
+#
+# site-audit — SEO + GEO audit of one site, v1 surface (2026-07).
+#
+# The honest core funnel: GEO discovery (robots.txt · llms.txt) → sitemap →
+# a bounded same-origin crawl → deterministic heuristics (jq · the one data
+# language) → ONE bounded model call for the narrative verdict → a
+# deterministic chart artifact + an HTML report. Audit-before-run applies:
+# `nika check site-audit.nika.yaml` prints the plan, the cost ceiling and
+# the permits boundary before a single request leaves.
+#
+# The 2024-era 1072-line pipeline lives at legacy/site-audit-v10.nika.yaml
+# (read-only reference — pre-v1 surface, does not parse on current engines).
+nika: v1
+workflow: site-audit
+description: "SEO + GEO site audit — discover, crawl bounded, score deterministically, one narrated verdict, artifacts as receipts"
 
-artifacts:
-  dir: ./artifacts
-  max_size: 536870912
+model: mock/echo # offline default — override live: --model anthropic/claude-sonnet-4-6 (or any provider/model)
 
-skills:
-  seo: ./skills/seo-auditor.md
+vars:
+  url:
+    type: string
+    default: "https://qrcode-ai.com"
+    description: "Site origin to audit (scheme + host, no trailing slash)"
 
-context:
-  files:
-    dashboard_template: ./templates/dashboard.html
-
-inputs:
-  url: "https://qrcode-ai.com"
+permits:
+  exec: false
+  net:
+    http: ["qrcode-ai.com"] # widen with the audited host when overriding vars.url
+  fs:
+    write: ["out/**"]
+  tools:
+    [
+      "nika:fetch",
+      "nika:jq",
+      "nika:chart",
+      "nika:write",
+      "nika:log",
+    ]
 
 tasks:
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 0: GEO discovery (parallel with sitemap)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: fetch_robots
-    description: "Fetch robots.txt for AI crawler analysis"
-    fetch:
-      url: "{{inputs.url}}/robots.txt"
-      response: slim
-      extract: text
-      timeout: 10
-
-  - id: fetch_llmstxt
-    description: "Check for llms.txt (AI content discovery)"
-    fetch:
-      url: "{{inputs.url}}/llms.txt"
-      response: slim
-      extract: text
-      timeout: 10
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 1: Seeds (parallel)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: fetch_sitemap
-    description: "Parse sitemap.xml — returns empty on 404 (spider mode)"
-    fetch:
-      url: "{{inputs.url}}/sitemap.xml"
-      response: slim
-      extract: sitemap
-      timeout: 30
-    retry:
-      max_attempts: 2
-      delay_ms: 2000
-      backoff: 2.0
-
-  - id: fetch_homepage
-    description: "Extract all links from homepage"
-    fetch:
-      url: "{{inputs.url}}"
-      extract: links
-      timeout: 20
-    retry:
-      max_attempts: 3
-      delay_ms: 2000
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 2: Expand sitemapindex
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: fetch_sub_sitemaps
-    depends_on: [fetch_sitemap]
-    for_each: "$fetch_sitemap.extracted.sitemaps"
-    as: sm
-    concurrency: 5
-    fail_fast: false
-    fetch:
-      url: "{{with.sm.loc}}"
-      extract: sitemap
-      timeout: 30
-    retry:
-      max_attempts: 3
-      delay_ms: 3000
-      backoff: 2.0
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 3: Combine all seed URLs
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: main_urls
-    depends_on: [fetch_sitemap]
-    with: { data: $fetch_sitemap }
+  # ── GEO discovery (parallel wave) ──────────────────────────────────
+  - id: robots
     invoke:
-      tool: "nika:map"
-      params:
-        array: "{{with.data.extracted.urls}}"
-        selector: "loc"
+      tool: "nika:fetch"
+      args: { url: "${{ vars.url }}/robots.txt", mode: text }
+    on_error:
+      recover: "" # a missing robots.txt is a FINDING, not a crash
 
-  - id: sub_urls
-    depends_on: [fetch_sub_sitemaps]
-    with: { data: $fetch_sub_sitemaps }
+  - id: llmstxt
+    invoke:
+      tool: "nika:fetch"
+      args: { url: "${{ vars.url }}/llms.txt", mode: text }
+    on_error:
+      recover: "" # absence recorded · scored below
+
+  - id: sitemap
+    invoke:
+      tool: "nika:fetch"
+      args: { url: "${{ vars.url }}/sitemap.xml", mode: sitemap }
+    retry: { max_attempts: 2, backoff_ms: 2000 }
+    on_error:
+      recover: "[]" # spider-mode fallback: the crawl still samples
+
+  # ── Bounded same-origin crawl (the sampler) ───────────────────────
+  - id: crawl
+    invoke:
+      tool: "nika:fetch"
+      args:
+        url: "${{ vars.url }}"
+        traverse: { max_pages: 8, respect_robots: true }
+    retry: { max_attempts: 2, backoff_ms: 2000 }
+
+  # ── Deterministic heuristics — jq is the one data language ────────
+  - id: geo_score
+    depends_on: [robots, llmstxt]
     invoke:
       tool: "nika:jq"
-      params:
-        data: "{{with.data}}"
-        expr: "[.. | .loc? // empty]"
-
-  # Filter homepage links to same-domain only (prevents crawling external sites)
-  - id: homepage_link_objects
-    depends_on: [fetch_homepage]
-    with: { data: $fetch_homepage }
-    invoke:
-      tool: "nika:filter"
-      params:
-        array: "{{with.data.links}}"
-        field: "url"
-        op: "starts_with"
-        value: "{{inputs.url}}"
-
-  - id: homepage_urls
-    depends_on: [homepage_link_objects]
-    with: { links: $homepage_link_objects }
-    invoke:
-      tool: "nika:map"
-      params:
-        array: "{{with.links}}"
-        selector: "url"
-
-  - id: sitemap_urls
-    depends_on: [main_urls, sub_urls]
-    with: { main: $main_urls, subs: $sub_urls }
-    invoke:
-      tool: "nika:json_merge"
-      params:
-        items: ["{{with.main}}", "{{with.subs}}"]
-        mode: "concat"
-
-  - id: new_homepage_urls
-    depends_on: [sitemap_urls, homepage_urls]
-    with: { home: $homepage_urls, sitemap: $sitemap_urls }
-    invoke:
-      tool: "nika:set_diff"
-      params:
-        a: "{{with.home}}"
-        b: "{{with.sitemap}}"
-
-  - id: all_urls
-    depends_on: [sitemap_urls, new_homepage_urls]
-    with: { sitemap: $sitemap_urls, new: $new_homepage_urls }
-    invoke:
-      tool: "nika:json_merge"
-      params:
-        items: ["{{with.sitemap}}", "{{with.new}}"]
-        mode: "concat"
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 4: Crawl — response:slim + extract:metadata
-  # ~800 bytes/page, governor 10 RPS
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: crawl_pages
-    description: "Crawl all pages — metadata per page"
-    depends_on: [all_urls]
-    for_each: "$all_urls"
-    as: page_url
-    concurrency: 10
-    fail_fast: false
-    fetch:
-      url: "{{with.page_url}}"
-      response: slim
-      extract: metadata
-      timeout: 15
-    retry:
-      max_attempts: 2
-      delay_ms: 2000
-      backoff: 2.0
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 5: Round 2 — Link discovery on sample pages
-  # Fetch links from 20 sample pages → filter internal → set_diff → crawl new
-  # ═════════════════════════════════════════════════════════════════════
-
-  # 5a. Pick 20 sample URLs for link extraction
-  - id: sample_urls
-    depends_on: [all_urls]
-    with: { urls: $all_urls }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.urls}}"
-        expr: ".[0:20]"
-
-  # 5b. Fetch links from 20 sample pages
-  - id: sample_links
-    depends_on: [sample_urls]
-    for_each: "$sample_urls"
-    as: page_url
-    concurrency: 5
-    fail_fast: false
-    fetch:
-      url: "{{with.page_url}}"
-      extract: links
-      timeout: 15
-    retry:
-      max_attempts: 2
-      delay_ms: 2000
-
-  # 5c. Extract all link objects from sample results
-  - id: all_link_objects
-    depends_on: [sample_links]
-    with: { results: $sample_links }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.results}}"
-        expr: "[.. | .links? // empty | .[]]"
-
-  # 5d. Filter to same-domain link objects
-  - id: internal_link_objects
-    depends_on: [all_link_objects]
-    with: { links: $all_link_objects }
-    invoke:
-      tool: "nika:filter"
-      params:
-        array: "{{with.links}}"
-        field: "url"
-        op: "starts_with"
-        value: "{{inputs.url}}"
-
-  # 5e. Extract just the URLs
-  - id: discovered_urls
-    depends_on: [internal_link_objects]
-    with: { links: $internal_link_objects }
-    invoke:
-      tool: "nika:map"
-      params:
-        array: "{{with.links}}"
-        selector: "url"
-
-  # 5f. Find truly new URLs (not in sitemap)
-  - id: r2_new_urls
-    depends_on: [discovered_urls, all_urls]
-    with: { found: $discovered_urls, seeds: $all_urls }
-    invoke:
-      tool: "nika:set_diff"
-      params:
-        a: "{{with.found}}"
-        b: "{{with.seeds}}"
-
-  # 5f. Crawl new pages
-  - id: crawl_r2
-    description: "Round 2: crawl pages discovered from internal links"
-    depends_on: [r2_new_urls]
-    for_each: "$r2_new_urls"
-    as: page_url
-    concurrency: 5
-    fail_fast: false
-    fetch:
-      url: "{{with.page_url}}"
-      response: slim
-      extract: metadata
-      timeout: 15
-    retry:
-      max_attempts: 2
-      delay_ms: 2000
-      backoff: 2.0
-
-  # 5g. Merge R1 + R2 results
-  - id: all_results
-    depends_on: [crawl_pages, crawl_r2]
-    with: { r1: $crawl_pages, r2: $crawl_r2 }
-    invoke:
-      tool: "nika:json_merge"
-      params:
-        items: ["{{with.r1}}", "{{with.r2}}"]
-        mode: "concat"
-
-  # Remove null entries from failed crawl iterations
-  - id: valid_results
-    depends_on: [all_results]
-    with: { results: $all_results }
-    invoke:
-      tool: "nika:filter"
-      params:
-        array: "{{with.results}}"
-        field: "status"
-        op: "gte"
-        value: 0
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 6: Enrich each page (ZERO LLM — all native transforms)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: enriched_pages
-    depends_on: [valid_results]
-    with: { results: $valid_results }
-    invoke:
-      tool: "nika:enrich"
-      params:
-        array: "{{with.results}}"
-        fields:
-          locale_raw: "url | url_path | split('/') | compact | first | default('default')"
-          locale: "url | url_path | split('/') | compact | first | default('default') | regex('^[a-z]{2,3}(-[a-z]{2,4})?$') | default('default')"
-          depth: "url | url_path | split('/') | compact | length"
-          title: "extracted.title | default('')"
-          description: "extracted.description | default('')"
-          canonical: "extracted.canonical | default('')"
-          hreflang_count: "extracted.hreflang | default([]) | length"
-          is_soft_404: "extracted.title | default('') | lower | contains('not found')"
-          section: "url | url_path | split('/') | compact | slice(0, 2) | last | default('/')"
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 6: Analysis (parallel — all native, zero LLM)
-  # ═════════════════════════════════════════════════════════════════════
-
-  # Group pages by URL section (for treemap data)
-  - id: pages_by_section
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:group_by"
-      params:
-        array: "{{with.pages}}"
-        key: "section"
-
-  - id: pages_by_locale
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:group_by"
-      params:
-        array: "{{with.pages}}"
-        key: "locale"
-
-  - id: stats
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:aggregate"
-      params:
-        array: "{{with.pages}}"
-        ops: ["count", "avg", "max"]
-        field: "elapsed_ms"
-
-  - id: broken_pages
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:filter"
-      params:
-        array: "{{with.pages}}"
-        field: "status"
-        op: "gte"
-        value: 400
-
-  - id: soft_404_pages
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:filter"
-      params:
-        array: "{{with.pages}}"
-        field: "is_soft_404"
-        op: "eq"
-        value: true
-
-  # Hreflang stats (native — count pages with hreflang, no LLM needed)
-  - id: hreflang_pages
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:filter"
-      params:
-        array: "{{with.pages}}"
-        field: "hreflang_count"
-        op: "gt"
-        value: 0
-
-  # Hreflang bidirectional validation (LLM — limited sample to avoid context overflow)
-  - id: hreflang_audit
-    description: "Check hreflang bidirectionality (sample of up to 50 pages)"
-    depends_on: [hreflang_pages]
-    with:
-      pages: $hreflang_pages
-    infer:
-      prompt: |
-        Analyze hreflang bidirectionality. For EACH page in the sample:
-        1. Does each target URL exist in the crawl data?
-        2. Does the target have a reciprocal hreflang back?
-        3. Does the page self-reference?
-
-        Sample pages with hreflang (up to 50):
-        {{with.pages | first(50) | pluck('url') | to_json}}
-
-        Total pages with hreflang: {{with.pages | length}}
-
-        Hreflang data for sample:
-        {{with.pages | first(50) | to_json}}
-
-        If no pages have hreflang, return total_checked: 0, valid: 0, issues: [].
-        Return ONLY the JSON. No prose.
-      temperature: 0.0
-      max_tokens: 8000
-    structured:
-      schema:
-        type: object
-        required: [total_checked, valid, issues]
-        properties:
-          total_checked: { type: integer }
-          valid: { type: integer }
-          issues:
-            type: array
-            items:
-              type: object
-              required: [url, issue_type]
-              properties:
-                url: { type: string }
-                target_url: { type: string }
-                lang: { type: string }
-                issue_type:
-                  type: string
-                  enum: [missing_return, target_not_crawled, no_self_ref]
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 6b: GEO Analysis (parallel with SEO analysis)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: geo_analysis
-    description: "GEO audit — AI crawler access + llms.txt + citability"
-    depends_on: [fetch_robots, fetch_llmstxt, enriched_pages]
-    with:
-      robots: $fetch_robots
-      llmstxt: $fetch_llmstxt
-      pages: $enriched_pages
-    infer:
-      prompt: |
-        Perform a GEO (Generative Engine Optimization) audit.
-
-        ROBOTS.TXT (status {{with.robots.status | default(0)}}):
-        {{with.robots.extracted | default('Not found — no robots.txt')}}
-
-        LLMS.TXT (status {{with.llmstxt.status | default(0)}}):
-        {{with.llmstxt.extracted | default('Not found — no llms.txt file')}}
-
-        Sample page titles (20):
-        {{with.pages | first(20) | pluck('title') | to_json}}
-
-        Analyze:
-        1. AI Crawler Access: Check robots.txt for these user-agents: GPTBot, ChatGPT-User,
-           Google-Extended, PerplexityBot, ClaudeBot, Amazonbot, anthropic-ai, Applebot-Extended,
-           cohere-ai, Bytespider, CCBot, FacebookBot, Meta-ExternalFetcher, OAI-SearchBot.
-           Report: allowed/blocked/not mentioned for each.
-
-        2. llms.txt Status: Does the site have an llms.txt file? What does it contain?
-
-        3. Content Citability: Based on page titles, estimate how well the content would be
-           cited by AI search engines. Look for: clear answer structures, factual claims,
-           descriptive titles, topic authority signals.
-
-        Return JSON only.
-      temperature: 0.0
-      max_tokens: 4000
-    structured:
-      schema:
-        type: object
-        required: [ai_crawler_access, llmstxt_status, citability_score, findings]
-        properties:
-          ai_crawler_access:
-            type: object
-            description: "Map of bot_name → allowed|blocked|not_mentioned"
-          llmstxt_status:
-            type: string
-            enum: [present, not_found, error]
-          citability_score:
-            type: integer
-            description: "0-100 estimate of AI citability"
-          findings:
-            type: array
-            items:
-              type: object
-              required: [issue, severity, recommendation]
-              properties:
-                issue: { type: string }
-                severity: { type: string, enum: [critical, high, medium, low] }
-                recommendation: { type: string }
-
-  # Status distribution chart (PNG)
-  - id: status_chart
-    description: "Generate status code distribution chart"
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:chart"
-      params:
-        type: "bar"
-        title: "HTTP Status Distribution"
-        width: 800
-        height: 400
-        series:
-          - name: "Pages"
-            data:
-              - "{{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}}"
-              - "{{with.pages | where('status', 'gte', 300) | where('status', 'lt', 400) | length}}"
-              - "{{with.pages | where('status', 'gte', 400) | where('status', 'lt', 500) | length}}"
-              - "{{with.pages | where('status', 'gte', 500) | length}}"
-        labels:
-          - "2xx OK"
-          - "3xx Redirect"
-          - "4xx Error"
-          - "5xx Error"
-    artifact:
-      path: charts/status-distribution.png
-      format: binary
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 7: Build sitemap JSON
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: build_sitemap
-    depends_on: [enriched_pages, pages_by_locale, stats, broken_pages,
-                 soft_404_pages, hreflang_audit, hreflang_pages]
-    with:
-      pages: $enriched_pages
-      by_locale: $pages_by_locale
-      stats: $stats
-      broken: $broken_pages
-      soft_404: $soft_404_pages
-      hreflang: $hreflang_audit
-      hreflang_pages: $hreflang_pages
-    invoke:
-      tool: "nika:json_merge"
-      params:
-        items:
-          - site:
-              base_url: "{{inputs.url}}"
-              total_pages: "{{with.pages | length}}"
-              locales: "{{with.by_locale | keys}}"
-              locale_count: "{{with.by_locale | keys | length}}"
-              hreflang_page_count: "{{with.hreflang_pages | length}}"
-          - pages: "{{with.pages}}"
-          - pages_by_locale: "{{with.by_locale}}"
-          - hreflang_audit: "{{with.hreflang}}"
-          - broken: "{{with.broken}}"
-          - soft_404: "{{with.soft_404}}"
-          - stats: "{{with.stats}}"
-        mode: "deep_merge"
-    artifact:
-      path: sitemap.json
-      format: json
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 8: Visual Artifacts (parallel, LLM-generated)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: mermaid_tree
-    depends_on: [pages_by_locale, enriched_pages, pages_by_section, broken_pages, stats]
-    with:
-      by_locale: $pages_by_locale
-      by_section: $pages_by_section
-      pages: $enriched_pages
-      broken: $broken_pages
-      stats: $stats
-    infer:
-      prompt: |
-        Generate a comprehensive Mermaid site structure diagram for a multilingual website audit.
-        This diagram should be the visual centerpiece of the audit report.
-
-        SITE DATA:
-        - Base URL: {{inputs.url}}
-        - Total pages: {{with.pages | length}}
-        - Locales ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
-        - Sections: {{with.by_section | keys | to_json}}
-        - Broken pages: {{with.broken | length}}
-        - Avg response: {{with.stats.avg}}ms
-
-        Sample pages (50): {{with.pages | first(50) | pluck('url') | to_json}}
-        Sample broken: {{with.broken | first(10) | pluck('url') | to_json}}
-
-        REQUIREMENTS:
-        1. Use `graph TD` (top-down) layout
-        2. Root node = domain name with total page count
-        3. Level 1 = Top locales (show top 8 by page count, group rest as "Other X locales")
-        4. Level 2 = Main sections per locale (show top 5 sections per locale)
-        5. Level 3 = Sub-sections if notable (blog categories, doc sections)
-        6. Use Mermaid styling:
-           - `:::error` class for broken page nodes
-           - Page counts in parentheses: `en[EN 44p]`
-           - Use icons: 🌐 for locales, 📄 for sections, ❌ for errors
-        7. Add a subgraph for "Issues Found" showing broken page summary
-        8. Max 80 nodes (be selective, show the most important structure)
-
-        FORMAT — return PLAIN markdown (NO outer code fence wrapper, just raw markdown):
-
-        Start the document directly with a heading:
-
-        # Site Structure — [domain]
-
-        > Crawled **N** pages across **N** locales. Health score: **N%**
-
-        Then include the mermaid diagram in a SINGLE code fence:
-
-        (opening triple backtick)mermaid
-        graph TD
-          classDef error fill:#ef4444,stroke:#dc2626,color:#fff
-          classDef locale fill:#6366f1,stroke:#4f46e5,color:#fff
-          classDef section fill:#1e2130,stroke:#2d3148,color:#e2e8f0
-          root["domain N pages"] --> en["EN Np"]:::locale
-        (closing triple backtick)
-
-        CRITICAL: Do NOT wrap the entire output in a markdown code fence.
-        The output IS markdown, not a code block containing markdown.
-
-        ## Locale Breakdown
-
-        | Locale | Pages | Sections | Status |
-        |--------|-------|----------|--------|
-        | EN     | N     | N        | ✅      |
-        | FR     | N     | N        | ⚠️      |
-
-        ## Key Observations
-        - Bullet point observations about the structure
-        ```
-
-        Return the COMPLETE markdown document with the mermaid diagram embedded.
-      temperature: 0.1
-      max_tokens: 4000
-    artifact:
-      path: site-structure.md
-      format: markdown
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 8c: Gemini Image Generation (parallel — AI-generated visuals)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: gen_header_image
-    description: "Generate report header banner via Imagen 3"
-    depends_on: [enriched_pages, broken_pages, pages_by_locale]
-    with:
-      pages: $enriched_pages
-      broken: $broken_pages
-      by_locale: $pages_by_locale
-      gemini_key: $env.GEMINI_API_KEY
-    fetch:
-      url: "https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent?key={{with.gemini_key}}"
-      method: POST
-      headers:
-        Content-Type: "application/json"
-      json:
-        contents:
-          - parts:
-              - text: "Professional hero banner for an SEO site audit report. Abstract visualization of {{with.pages | length}} web pages across {{with.by_locale | keys | length}} languages being analyzed — interconnected luminous nodes and scanning beams on a dark canvas. Modern tech aesthetic, gradient from deep navy (#0f1117) to electric blue (#4f46e5). Minimalist, NO text, wide format. Corporate quality, clean lines, subtle glow effects. Some nodes highlighted in red ({{with.broken | length}} errors). Beautiful, premium, cinematic feel."
-        generationConfig:
-          responseModalities:
-            - IMAGE
-          responseMimeType: "text/plain"
-      response: full
-      timeout: 60
-    retry:
-      max_attempts: 2
-      delay_ms: 5000
-
-  - id: extract_header_b64
-    description: "Extract base64 image from Imagen response"
-    depends_on: [gen_header_image]
-    with: { resp: $gen_header_image }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.resp.body | parse_json}}"
-        expr: "[.candidates[0].content.parts[] | select(.inlineData) | .inlineData.data] | if length > 0 then .[0] else \"\" end"
-
-  - id: gen_metrics_image
-    description: "Generate metrics infographic via Imagen 3"
-    depends_on: [stats, enriched_pages, broken_pages, soft_404_pages, pages_by_locale]
-    with:
-      stats: $stats
-      pages: $enriched_pages
-      broken: $broken_pages
-      soft_404: $soft_404_pages
-      by_locale: $pages_by_locale
-      gemini_key: $env.GEMINI_API_KEY
-    fetch:
-      url: "https://generativelanguage.googleapis.com/v1beta/models/nano-banana-pro-preview:generateContent?key={{with.gemini_key}}"
-      method: POST
-      headers:
-        Content-Type: "application/json"
-      json:
-        contents:
-          - parts:
-              - text: "Clean professional data visualization infographic for an SEO audit. Modern gauge charts showing: Total Pages {{with.pages | length}}, {{with.by_locale | keys | length}} Locales, {{with.broken | length}} Errors, Avg Response {{with.stats.avg}}ms. Dark background (#0f1117), accent colors: green (#10b981) good, yellow (#f59e0b) warning, red (#ef4444) errors, indigo (#6366f1) primary. Flat design, data-focused, clean grid. NO people, NO text on image, only visual charts and gauges."
-        generationConfig:
-          responseModalities:
-            - IMAGE
-          responseMimeType: "text/plain"
-      response: full
-      timeout: 60
-    retry:
-      max_attempts: 2
-      delay_ms: 5000
-
-  - id: extract_metrics_b64
-    description: "Extract base64 image from Imagen response"
-    depends_on: [gen_metrics_image]
-    with: { resp: $gen_metrics_image }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.resp.body | parse_json}}"
-        expr: "[.candidates[0].content.parts[] | select(.inlineData) | .inlineData.data] | if length > 0 then .[0] else \"\" end"
-
-  - id: locale_counts
-    description: "Compute per-locale page counts for the report"
-    depends_on: [pages_by_locale]
-    with: { by_locale: $pages_by_locale }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.by_locale}}"
-        expr: "[to_entries[] | {locale: .key, pages: (.value | length)}] | sort_by(.pages) | reverse"
-
-  - id: crawl_report
-    depends_on: [stats, broken_pages, soft_404_pages, hreflang_audit,
-                 pages_by_locale, enriched_pages, hreflang_pages, geo_analysis, locale_counts]
-    with:
-      stats: $stats
-      broken: $broken_pages
-      soft_404: $soft_404_pages
-      hreflang: $hreflang_audit
-      by_locale: $pages_by_locale
-      pages: $enriched_pages
-      hreflang_pages: $hreflang_pages
-      geo: $geo_analysis
-      locale_counts: $locale_counts
-    infer:
-      prompt: |
-        You are a senior SEO consultant writing a comprehensive, data-driven site audit report.
-        Write a LONG, detailed, professional markdown report (at least 3000 words).
-
-        HEALTH SCORE FORMULA (use this, NOT the skill scoring):
-        health_score = ((total_pages - error_pages) / total_pages) * 100
-        This gives the percentage of pages returning successful responses (2xx/3xx).
-        Grade: A (95-100), B (85-94), C (70-84), D (50-69), F (<50)
-        Do NOT use the skill's per-page penalty scoring — use this simple formula.
-
-        ═══════════════════════════════════════════════════════════════
-        AUDIT DATA
-        ═══════════════════════════════════════════════════════════════
-
-        SITE: {{inputs.url}}
-        TOTAL PAGES CRAWLED: {{with.pages | length}}
-        LOCALES ({{with.by_locale | keys | length}}): {{with.by_locale | keys | to_json}}
-        HREFLANG PAGES: {{with.hreflang_pages | length}}
-        CRAWL STATS: {{with.stats | to_json}}
-        HEALTH SCORE: {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 400) | length}} healthy of {{with.pages | length}} total = {{with.pages | where('status', 'gte', 400) | length}} errors
-
-        LOCALE PAGE COUNTS (use these EXACT numbers in the locale breakdown table):
-        {{with.locale_counts | to_json}}
-
-        STATUS DISTRIBUTION:
-        - 2xx OK:        {{with.pages | where('status', 'gte', 200) | where('status', 'lt', 300) | length}} pages
-        - 3xx Redirect:  {{with.pages | where('status', 'gte', 300) | where('status', 'lt', 400) | length}} pages
-        - 4xx Error:     {{with.pages | where('status', 'gte', 400) | where('status', 'lt', 500) | length}} pages
-        - 5xx Server:    {{with.pages | where('status', 'gte', 500) | length}} pages
-
-        BROKEN PAGES ({{with.broken | length}}):
-        {{with.broken | pluck('url') | first(30) | to_json}}
-
-        SOFT 404 ({{with.soft_404 | length}}):
-        {{with.soft_404 | pluck('url') | first(15) | to_json}}
-
-        DEPTH DISTRIBUTION:
-        - Depth 0 (homepage): {{with.pages | where('depth', 'eq', 0) | length}}
-        - Depth 1 (main sections): {{with.pages | where('depth', 'eq', 1) | length}}
-        - Depth 2 (sub-pages): {{with.pages | where('depth', 'eq', 2) | length}}
-        - Depth 3 (deep content): {{with.pages | where('depth', 'eq', 3) | length}}
-        - Depth 4+ (very deep): {{with.pages | where('depth', 'gte', 4) | length}}
-
-        HREFLANG AUDIT RESULTS: {{with.hreflang | to_json}}
-
-        GEO (AI OPTIMIZATION) AUDIT: {{with.geo | to_json}}
-
-        SAMPLE PAGES (30): {{with.pages | first(30) | to_json}}
-
-        ═══════════════════════════════════════════════════════════════
-        REPORT STRUCTURE — Write ALL of these sections in detail:
-        ═══════════════════════════════════════════════════════════════
-
-        # Technical SEO Site Audit — {{inputs.url}}
-
-        ## 1. Executive Summary
-        - Overall health score with letter grade (A/B/C/D/F)
-        - 3-sentence verdict on the site's SEO health
-        - Top 3 critical priorities
-        - Key metrics table: Total Pages, Locales, Health Score, Error Rate, Avg Response Time
-
-        ## 2. Crawl Overview
-        - How many pages were discovered and crawled
-        - Crawl methodology (sitemap + homepage links + 2nd round discovery)
-        - Status code distribution table with percentages and visual bars
-        - Response time analysis (avg, max, slow pages)
-
-        ## 3. Site Architecture & Depth Analysis
-        - Depth distribution table with commentary
-        - Flag any pages at depth 4+ as architecture concerns
-        - Analysis of URL structure patterns
-        - Section breakdown (how content is organized)
-
-        ## 4. International SEO & Localization
-        - Full locale breakdown table (locale, page count, percentage of total)
-        - Hreflang tag coverage and validation results
-        - Bidirectional hreflang check results
-        - Missing locale coverage analysis
-        - Locale-specific issues
-
-        ## 5. GEO Analysis (AI Search Optimization)
-        - AI crawler access status (table: bot name, status, recommendation)
-        - llms.txt presence and analysis
-        - Citability score with explanation
-        - Recommendations for AI search visibility
-        - Comparison with industry best practices
-
-        ## 6. Error Analysis
-        - Full list of 4xx errors (up to 30 URLs) with analysis
-        - 5xx server errors if any
-        - Soft 404 detection results
-        - Impact assessment for each error category
-
-        ## 7. Performance
-        - Response time statistics
-        - Slow pages flagged (>2s)
-        - Server performance assessment
-
-        ## 8. Issues Index
-        Group ALL issues by severity with counts:
-        - CRITICAL: immediate action needed (5xx errors, major hreflang failures)
-        - HIGH: fix within 1 week (4xx errors, blocked crawlers)
-        - MEDIUM: fix within 1 month (deep pages, slow responses)
-        - LOW: nice to have improvements
-
-        ## 9. Recommendations & Action Plan
-
-        ### Quick Wins (this week)
-        Specific, actionable items with URLs
-
-        ### This Month
-        Medium-term improvements
-
-        ### This Quarter
-        Strategic improvements
-
-        ## 10. Appendix
-        - Full status distribution table
-        - Locale inventory
-        - Methodology notes
-
-        ═══════════════════════════════════════════════════════════════
-        FORMATTING RULES:
-        - Use markdown tables with proper alignment
-        - Use **bold** for key numbers and metrics
-        - Use `code` for URLs
-        - Include ASCII bar charts for distributions: ████████░░ 80%
-        - Be specific: cite actual URLs, not generic descriptions
-        - Every finding must include: what, where (URL), impact, fix
-        - Minimum 3000 words — this is a comprehensive professional audit
-        ═══════════════════════════════════════════════════════════════
-      temperature: 0.1
-      max_tokens: 16000
-    artifact:
-      path: crawl-report.md
-      format: markdown
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 8d: Audio narration (ElevenLabs TTS)
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: audio_script
-    description: "Create a 5-minute podcast script from the audit report"
-    depends_on: [crawl_report]
-    with: { report: $crawl_report }
-    infer:
-      prompt: |
-        Convert this SEO audit report into a natural, engaging 5-minute podcast narration script.
-        Write as if you're a professional SEO analyst presenting findings to a client.
-
-        Rules:
-        - Start with "Welcome to your site audit report for [domain]"
-        - Be conversational but data-driven
-        - Highlight the 3 most important findings
-        - End with top 3 action items
-        - Target ~750 words (5 minutes of speech)
-        - Do NOT use markdown formatting, just plain text
-        - Use natural pauses: "..." for short pauses, "—" for emphasis
-
-        Report:
-        {{with.report}}
-      temperature: 0.3
-      max_tokens: 3000
-
-  - id: write_audio_script
-    description: "Write podcast script to temp file for curl"
-    depends_on: [audio_script]
-    with: { script: $audio_script }
-    invoke:
-      tool: "nika:write"
-      params:
-        file_path: "artifacts/tmp/audio-payload.json"
-        content: |
-          {"text": {{with.script | to_json}}, "model_id": "eleven_multilingual_v2", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75, "style": 0.3}}
-        overwrite: true
-
-  - id: gen_audio
-    description: "Generate podcast audio via ElevenLabs (curl bypass robots)"
-    depends_on: [write_audio_script]
-    with:
-      el_key: $env.ELEVENLABS_API_KEY
-    exec:
-      command: "curl -s -X POST 'https://api.elevenlabs.io/v1/text-to-speech/pNInz6obpgDQGcFmaJgB?output_format=mp3_44100_128' -H 'Content-Type: application/json' -H 'xi-api-key: {{with.el_key | shell}}' -d @artifacts/tmp/audio-payload.json --output artifacts/audio/site-audit-podcast.mp3 --create-dirs -w '%{http_code}'"
-      shell: true
-      timeout: 120
-    retry:
-      max_attempts: 2
-      delay_ms: 5000
-
-  # ═════════════════════════════════════════════════════════════════════
-  # LAYER 8b: Dashboard data (100% native — zero exec, zero LLM)
-  # nika:tree_data + nika:jq replace external jq/awk commands
-  # ═════════════════════════════════════════════════════════════════════
-
-  - id: build_tree_children
-    description: "Treemap hierarchy — native nested group_by (exact counts)"
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:tree_data"
-      params:
-        array: "{{with.pages}}"
-        group_by: "locale"
-        sub_group_by: "section"
-        name_prefix: "/"
-        sort: "desc"
-
-  - id: build_tree
-    description: "Wrap tree children with domain metadata"
-    depends_on: [build_tree_children, enriched_pages, broken_pages, soft_404_pages]
-    with:
-      children: $build_tree_children
-      pages: $enriched_pages
-      broken: $broken_pages
-      soft_404: $soft_404_pages
-    invoke:
-      tool: "nika:jq"
-      params:
-        data:
-          name: "{{inputs.url | url_host}}"
-          total_pages: "{{with.pages | length}}"
-          broken_count: "{{with.broken | length}}"
-          soft_404_count: "{{with.soft_404 | length}}"
-          children: "{{with.children}}"
-        expr: ". + {health_score: ((((.total_pages - .broken_count - .soft_404_count) * 100) / ([.total_pages, 1] | max)) | round)}"
-
-  - id: build_graph
-    description: "Force graph — nodes from URL paths, edges from hierarchy"
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.pages}}"
-        expr: |
-          [.[] | .url | strings | split("//") | if length > 1 then (.[1] | split("/") | .[1:] | join("/") | "/" + .) else . end | if . == "" or . == "/" then "/" else rtrimstr("/") end] | unique | .[0:80] | . as $paths | {nodes: [$paths[] | . as $p | ($p | split("/") | .[1:2] | .[0] // "") as $seg | {id: $p, g: (if $p == "/" then "root" elif ($seg == "docs" or $seg == "doc" or $seg == "api" or $seg == "reference" or $seg == "guides" or $seg == "guide" or $seg == "learn" or $seg == "tutorials" or $seg == "tutorial" or $seg == "examples" or $seg == "example" or $seg == "faq" or $seg == "handbook" or $seg == "getting-started" or $seg == "changelog" or $seg == "attributes" or $seg == "specs" or $seg == "schemas") then "doc" elif ($seg == "blog" or $seg == "news" or $seg == "articles" or $seg == "article" or $seg == "posts" or $seg == "post" or $seg == "essays" or $seg == "stories" or $seg == "interviews" or $seg == "updates" or $seg == "press" or $seg == "newsletter" or $seg == "talks") then "cnt" elif ($seg == "about" or $seg == "contact" or $seg == "careers" or $seg == "legal" or $seg == "terms" or $seg == "privacy" or $seg == "team" or $seg == "company" or $seg == "imprint" or $seg == "jobs" or $seg == "lore" or $seg == "webring") then "co" elif ($seg == "pricing" or $seg == "features" or $seg == "solutions" or $seg == "enterprise" or $seg == "plans" or $seg == "tarifs" or $seg == "preise") then "mkt" elif ($seg == "app" or $seg == "dashboard" or $seg == "console" or $seg == "product" or $seg == "tools" or $seg == "extensions" or $seg == "plugins" or $seg == "integrations" or $seg == "packages") then "prod" elif ($seg == "login" or $seg == "signup" or $seg == "sign-up" or $seg == "register" or $seg == "auth" or $seg == "account" or $seg == "profile" or $seg == "settings" or $seg == "sso") then "auth" else "cnt" end)}], links: [$paths[] | select(. != "/") | . as $child | ($child | split("/") | if .[-1] == "" then .[:-1] else . end | .[:-1] | join("/") | if . == "" then "/" else . end) as $parent | select([$paths[] | select(. == $parent)] | length > 0) | [$parent, $child]]}
-
-  - id: slim_pages
-    description: "Slim page list for dashboard table (drop heavy sub-objects)"
-    depends_on: [enriched_pages]
-    with: { pages: $enriched_pages }
-    invoke:
-      tool: "nika:jq"
-      params:
-        data: "{{with.pages}}"
-        expr: "[.[] | {url, status, title, locale, section, depth, elapsed_ms}]"
-
-  - id: dashboard_stats
-    description: "Compute dashboard stats (status distribution, depths, crawlers)"
-    depends_on: [enriched_pages, broken_pages, soft_404_pages, fetch_robots]
-    with:
-      pages: $enriched_pages
-      broken: $broken_pages
-      soft_404: $soft_404_pages
-      robots: $fetch_robots
-    invoke:
-      tool: "nika:jq"
-      params:
-        data:
-          pages: "{{with.pages}}"
-          broken_count: "{{with.broken | length}}"
-          soft_404_count: "{{with.soft_404 | length}}"
-          robots_txt: "{{with.robots.extracted | default(with.robots) | default('') | to_string}}"
-        expr: |
-          . as $d |
-          ($d.pages | length) as $total |
+      args:
+        input:
+          robots: "${{ tasks.robots.output }}"
+          llms: "${{ tasks.llmstxt.output }}"
+        expression: >-
           {
-            health_score: (((($total - $d.broken_count - $d.soft_404_count) * 100) / ([$total, 1] | max)) | round),
-            status: {
-              ok: ([$d.pages[] | select((.status // 200) >= 200 and (.status // 200) < 300)] | length),
-              redirect: ([$d.pages[] | select((.status // 200) >= 300 and (.status // 200) < 400)] | length),
-              error: ([$d.pages[] | select((.status // 200) >= 400 and (.status // 200) < 500)] | length),
-              server_error: ([$d.pages[] | select((.status // 200) >= 500)] | length)
-            },
-            depths: ([$d.pages[] | .depth // 0 | tostring] | group_by(.) | map({(.[0]): length}) | add // {}),
-            perf: {
-              avg_ms: ([$d.pages[] | .elapsed_ms // 0] | if length > 0 then (add / length | round) else 0 end),
-              max_ms: ([$d.pages[] | .elapsed_ms // 0] | max // 0),
-              slow_count: ([$d.pages[] | select((.elapsed_ms // 0) > 2000)] | length)
-            },
-            crawlers: {
-              Googlebot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Googlebot") | not) else true end),
-              Bingbot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("Bingbot") | not) else true end),
-              GPTBot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("GPTBot") | not) else true end),
-              ClaudeBot: (if ($d.robots_txt | length) > 0 then ($d.robots_txt | test("ClaudeBot") | not) else true end)
-            }
+            has_robots: (.robots | length > 0),
+            has_llmstxt: (.llms | length > 0),
+            ai_crawlers_addressed: (.robots | test("GPTBot|ClaudeBot|Claude-Web|PerplexityBot|Google-Extended"; "i")),
+            geo_points: (
+              (if (.robots | length > 0) then 40 else 0 end) +
+              (if (.llms | length > 0) then 40 else 0 end) +
+              (if (.robots | test("GPTBot|ClaudeBot|Claude-Web|PerplexityBot|Google-Extended"; "i")) then 20 else 0 end)
+            )
           }
 
-  - id: write_dashboard_js
-    description: "Write all dashboard data as JavaScript variables"
-    depends_on: [build_tree, build_graph, crawl_report, slim_pages, dashboard_stats]
-    with:
-      tree: $build_tree
-      graph: $build_graph
-      report: $crawl_report
-      pages: $slim_pages
-      stats: $dashboard_stats
+  - id: seo_score
+    depends_on: [crawl, sitemap]
+    invoke:
+      tool: "nika:jq"
+      args:
+        input:
+          pages: "${{ tasks.crawl.output }}"
+          sitemap: "${{ tasks.sitemap.output }}"
+        expression: >-
+          (.pages.pages // []) as $p |
+          {
+            pages_sampled: ($p | length),
+            with_title: [$p[] | select((.title // "") | length > 0)] | length,
+            with_description: [$p[] | select((.description // "") | length > 0)] | length,
+            sitemap_urls: (.sitemap | if type == "array" then length else 0 end),
+            seo_points: (
+              (if ($p | length) == 0 then 0 else
+                ((([$p[] | select((.title // "") | length > 0)] | length) * 50 / ($p | length)) +
+                 (([$p[] | select((.description // "") | length > 0)] | length) * 30 / ($p | length))) end) +
+              (if (.sitemap | if type == "array" then length else 0 end) > 0 then 20 else 0 end)
+            ) | floor
+          }
+
+  # ── The chart artifact — deterministic scorecard, sha in the trace ─
+  - id: scorecard
+    depends_on: [geo_score, seo_score]
+    invoke:
+      tool: "nika:chart"
+      args:
+        data:
+          - { axis: "GEO readiness", points: "${{ tasks.geo_score.output.geo_points }}" }
+          - { axis: "SEO hygiene", points: "${{ tasks.seo_score.output.seo_points }}" }
+        semantics: { axis: category, points: count }
+        chart:
+          {
+            type: bar,
+            x: axis,
+            y: points,
+            title: "Site audit scorecard",
+          }
+        out: out/scorecard.svg
+
+  # ── ONE bounded model call — the narrated verdict ──────────────────
+  - id: verdict
+    depends_on: [geo_score, seo_score]
+    infer:
+      prompt: >-
+        You are an SEO/GEO auditor. Facts (deterministic, already computed):
+        GEO ${{ tasks.geo_score.output }} · SEO ${{ tasks.seo_score.output }}.
+        Write a 3-sentence verdict: the single biggest gap, the quickest win,
+        and one structural recommendation. Plain prose, no headings.
+      max_tokens: 300
+
+  # ── The report — one HTML artifact, receipts inline ────────────────
+  - id: report
+    depends_on: [verdict, scorecard, geo_score, seo_score]
     invoke:
       tool: "nika:write"
-      params:
-        file_path: "artifacts/tmp/dashboard-data.js"
+      args:
+        path: out/report.html
         content: |
-          var TREE = {{with.tree | to_json}};
-          var GRAPH = {{with.graph | to_json}};
-          var REPORT = {{with.report | to_json}};
-          var PAGES = {{with.pages | to_json}};
-          var STATS = {{with.stats | to_json}};
-          var CHART = "";
-        overwrite: true
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Site audit — ${{ vars.url }}</title>
+          <style>body{font:16px/1.5 system-ui;max-width:44rem;margin:3rem auto;padding:0 1rem}img{max-width:100%}code{background:#eee;padding:.1em .3em;border-radius:3px}</style>
+          <h1>Site audit</h1>
+          <p><code>${{ vars.url }}</code></p>
+          <img src="scorecard.svg" alt="Scorecard: GEO readiness and SEO hygiene">
+          <h2>Verdict</h2>
+          <p>${{ tasks.verdict.output }}</p>
+          <h2>Facts</h2>
+          <pre>GEO ${{ tasks.geo_score.output }}
+          SEO ${{ tasks.seo_score.output }}</pre>
+          <p><small>Generated by <a href="https://nika.sh">nika</a> — the run's
+          trace chain is the receipt (<code>nika trace verify</code>).</small></p>
 
-  - id: html_dashboard
-    description: "Inject data variables into dashboard HTML template"
-    depends_on: [build_tree, build_graph, crawl_report, slim_pages, dashboard_stats]
-    with:
-      tree: $build_tree
-      graph: $build_graph
-      report: $crawl_report
-      pages: $slim_pages
-      stats: $dashboard_stats
-      header_img: $extract_header_b64 ?? ""
-      metrics_img: $extract_metrics_b64 ?? ""
+  - id: done
+    depends_on: [report]
     invoke:
-      tool: "nika:inject"
-      params:
-        template: "./templates/dashboard.html"
-        output: "./artifacts/audit-dashboard.html"
-        start_marker: "// DATA —"
-        end_marker: "// CONSTANTS & HELPERS"
-        content: |
-          var TREE = {{with.tree | to_json}};
-          var GRAPH = {{with.graph | to_json}};
-          var REPORT = {{with.report | to_json}};
-          var PAGES = {{with.pages | to_json}};
-          var STATS = {{with.stats | to_json}};
-          var CHART = "";
-          var IMAGES = [{{with.header_img | default('') | length}} > 0 ? {src:"data:image/png;base64," + {{with.header_img | to_json}}, caption:"Site Audit — AI Generated Banner"} : null, {{with.metrics_img | default('') | length}} > 0 ? {src:"data:image/png;base64," + {{with.metrics_img | to_json}}, caption:"Metrics Overview — AI Generated"} : null].filter(Boolean);
+      tool: "nika:log"
+      args: { message: "audit complete → out/report.html · out/scorecard.svg" }
+
+outputs:
+  geo: "${{ tasks.geo_score.output }}"
+  seo: "${{ tasks.seo_score.output }}"
+  verdict: "${{ tasks.verdict.output }}"
