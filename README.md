@@ -26,16 +26,26 @@ Full website audit workflow powered by [Nika](https://github.com/supernovae-st/n
 
 ### 1. Get the Nika engine
 
-This legacy workflow needs the pre-rewrite `nikab` binary, not the current
-`nika` release-candidate. Install the current engine from the
-[Homebrew tap](https://github.com/supernovae-st/homebrew-tap)
-(`brew install supernovae-st/tap/nika`) or `install.sh` for modern
-`.nika.yaml` files; keep this repo as a **read-only reference** until it is
-rewritten against the current stdlib surface.
+`site-audit.nika.yaml` is the **v1 workflow** — modernized 2026-07-10, it
+checks clean and runs end-to-end on the released engine
+([Homebrew tap](https://github.com/supernovae-st/homebrew-tap) ·
+`brew install supernovae-st/tap/nika`):
 
-> The workflow uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
+```bash
+nika check site-audit.nika.yaml     # the audit-before-run: plan · cost · permits
+nika run site-audit.nika.yaml       # offline verdict (mock) · artifacts in out/
+nika run site-audit.nika.yaml --model anthropic/claude-sonnet-4-6   # live verdict
+nika test site-audit.nika.yaml      # the committed golden guards the outputs
+```
+
+The 2024-era 1072-line pipeline is preserved at
+`legacy/site-audit-v10.nika.yaml` — a read-only reference in the retired
+pre-v1 dialect (it needs the pre-rewrite `nikab` binary and does not parse
+on current engines, by design).
+
+> The legacy file uses `nika:jq`, `nika:map`, `nika:filter`, `nika:enrich`,
 > `nika:tree_data`, `nika:inject`, the encrypted vault, and
-> `$binding ?? fallback`. This legacy file's envelope is the retired
+> `$binding ?? fallback`. Its envelope is the retired
 > legacy form `schema: nika/workflow@0.12` — the current language
 > (envelope `nika: v1`) is defined in the
 > [spec](https://github.com/supernovae-st/nika-spec).
