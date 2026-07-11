@@ -61,12 +61,15 @@ nika run  site-audit.nika.yaml          # offline verdict (mock model) · artifa
 nika test site-audit.nika.yaml          # the committed golden guards the outputs
 ```
 
-Live run against your own site, with a real model:
+Live run against your own site, with a real model — local first, nothing
+leaves your machine but the audit itself:
 
 ```bash
 nika run site-audit.nika.yaml \
-  -i "url=https://your-site.com" \
-  --model anthropic/claude-sonnet-4-6   # or any provider/model, incl. ollama/...
+  --var url=https://your-site.com \
+  --model ollama/qwen3:8b        # any provider/model works the same way:
+                                 # mistral/mistral-medium-latest ·
+                                 # anthropic/claude-sonnet-4-6 (needs its env key · `nika doctor`)
 ```
 
 Note the `permits:` block in the workflow pins the network to the audited
