@@ -61,7 +61,7 @@ nika run  site-audit.nika.yaml          # offline verdict (mock model) · artifa
 nika test site-audit.nika.yaml          # the committed golden guards the outputs
 ```
 
-Live run against your own site, with a real model — local first, nothing
+Live run against your own site, with a real model · local first, nothing
 leaves your machine but the audit itself:
 
 ```bash
