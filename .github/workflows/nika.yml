@@ -1,0 +1,29 @@
+# The dogfood gate · this repo ships a .nika.yaml workflow and the studio
+# ships a GitHub Action that audits exactly that · so the audit workflow
+# is audited by our own action on every change (check + offline golden
+# test · zero secrets · proven green locally before this gate armed).
+# First-party action stays on its release tag by design (house law) ·
+# no user-controlled strings reach any shell (zero run: steps).
+
+name: nika
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write # the sticky plan comment
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: supernovae-st/nika-action@v1 # first-party · tracks the action's release tag by design
+        with:
+          workflow: site-audit.nika.yaml
+          mode: test
