@@ -1,0 +1,13 @@
+# One grouped PR per wave · never per-action: coupled pairs (codeql
+# init/analyze) split across PRs go red on both · proven nika-spec
+# 2026-07-19 · the github-actions ecosystem always ships grouped.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
