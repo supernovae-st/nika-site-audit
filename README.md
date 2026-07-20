@@ -97,13 +97,14 @@ cost that surprises you. `nika check` catches those statically, and the
 The model gets exactly one job: narrate the verdict from scores computed
 deterministically.
 
-## The 2024 legacy showcase
+## The brouillon-era legacy showcase
 
-`legacy/site-audit-v10.nika.yaml` preserves the original 1072-line pipeline:
-50 tasks, 22 layers, locale detection across 38 locales, an interactive
-10-tab dashboard, AI-generated imagery and a podcast narration. It ran
-against the pre-rewrite `nikab` binary in the retired pre-v1 dialect and
-does not parse on current engines, by design. Recorded legacy-era results:
+`legacy/site-audit-v10.nika.yaml` preserves the original 1072-line pipeline
+(April 2026, the brouillon era — the draft engine the Diamond rewrite
+retired): 50 tasks, 22 layers, locale detection across 38 locales, an
+interactive 10-tab dashboard, AI-generated imagery and a podcast narration.
+It ran against the pre-rewrite `nikab` binary in the retired pre-v1 dialect
+and does not parse on current engines, by design. Recorded legacy-era results:
 
 | Site | Pages | Locales | Tasks |
 |------|-------|---------|-------|
@@ -113,6 +114,8 @@ does not parse on current engines, by design. Recorded legacy-era results:
 
 Keep it as evidence of scale and a design archive. Do not learn the syntax
 from it; the current language is the [public spec](https://github.com/supernovae-st/nika-spec).
+The full era model — exploration · brouillon · diamond — is the
+machine-verified [timeline](https://nika.sh/timeline).
 
 ## Files
 
@@ -121,7 +124,7 @@ from it; the current language is the [public spec](https://github.com/supernovae
 | `site-audit.nika.yaml` | the v1 workflow: 11 tasks, declared permits, offline by default |
 | `site-audit.nika.yaml.golden.json` | the committed golden: `nika test` compares typed outputs against it |
 | `skills/` | the audit rubric the verdict is grounded in |
-| `legacy/` | the 2024 showcase, read-only |
+| `legacy/` | the brouillon-era showcase (April 2026), read-only |
 | `prototypes/` | exploration, not the product |
 
 <p align="center">
