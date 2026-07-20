@@ -30,14 +30,12 @@ permits:
   net:
     http: ["qrcode-ai.com"] # widen with the audited host when overriding vars.url
   fs:
-    read: ["skills/**"]
     write: ["out/**"]
   tools:
     [
       "nika:fetch",
       "nika:jq",
       "nika:chart",
-      "nika:read",
       "nika:write",
       "nika:log",
     ]
@@ -77,13 +75,15 @@ tasks:
 
   # ── Deterministic heuristics — jq is the one data language ────────
   geo_score:
-    depends_on: [robots, llmstxt]
+    with:
+      robots: ${{ tasks.robots.output }}
+      llmstxt: ${{ tasks.llmstxt.output }}
     invoke:
       tool: "nika:jq"
       args:
         input:
-          robots: "${{ tasks.robots.output }}"
-          llms: "${{ tasks.llmstxt.output }}"
+          robots: "${{ with.robots }}"
+          llms: "${{ with.llmstxt }}"
         expression: >-
           {
             has_robots: (.robots | length > 0),
@@ -97,13 +97,15 @@ tasks:
           }
 
   seo_score:
-    depends_on: [crawl, sitemap]
+    with:
+      crawl: ${{ tasks.crawl.output }}
+      sitemap: ${{ tasks.sitemap.output }}
     invoke:
       tool: "nika:jq"
       args:
         input:
-          pages: "${{ tasks.crawl.output }}"
-          sitemap: "${{ tasks.sitemap.output }}"
+          pages: "${{ with.crawl }}"
+          sitemap: "${{ with.sitemap }}"
         # The health score follows skills/seo-auditor.md §Scoring — the
         # rows the crawl digest can PROVE (title · description · status ·
         # thin text · long title); per-group rules (duplicates · orphans ·
@@ -135,14 +137,17 @@ tasks:
 
   # ── The chart artifact — deterministic scorecard, sha in the trace ─
   scorecard:
-    depends_on: [geo_score, seo_score]
+    with:
+      geo_score_geo_points: ${{ tasks.geo_score.output.geo_points }}
+      seo_score_seo_points: ${{ tasks.seo_score.output.seo_points }}
+      seo_score_health: ${{ tasks.seo_score.output.health }}
     invoke:
       tool: "nika:chart"
       args:
         data:
-          - { axis: "GEO readiness", points: "${{ tasks.geo_score.output.geo_points }}" }
-          - { axis: "SEO hygiene", points: "${{ tasks.seo_score.output.seo_points }}" }
-          - { axis: "Health (rubric)", points: "${{ tasks.seo_score.output.health }}" }
+          - { axis: "GEO readiness", points: "${{ with.geo_score_geo_points }}" }
+          - { axis: "SEO hygiene", points: "${{ with.seo_score_seo_points }}" }
+          - { axis: "Health (rubric)", points: "${{ with.seo_score_health }}" }
         semantics: { axis: category, points: count }
         chart:
           {
@@ -155,29 +160,34 @@ tasks:
 
   # ── ONE bounded model call — the narrated verdict ──────────────────
   # The auditor rubric (skills/seo-auditor.md · scoring rules · severity
-  # vocabulary) rides as the SYSTEM prompt — read at run, never inlined
-  # (the v1 form of the legacy `skills:` auto-injection).
-  rubric:
-    invoke:
-      tool: "nika:read"
-      args: { path: skills/seo-auditor.md }
-
+  # vocabulary) rides as a first-class `skills:` injection — resolved at
+  # compose time (NIKA-AGENT-003 refuses a missing file before any run),
+  # never inlined, and needing NO fs.read grant: the private-read leg of
+  # the lethal trifecta (NIKA-SEC-009) drops out by design.
   verdict:
-    depends_on: [geo_score, seo_score, rubric]
-    infer:
-      system: "${{ tasks.rubric.output }}"
+    with:
+      geo: ${{ tasks.geo_score.output }}
+      seo: ${{ tasks.seo_score.output }}
+    agent:
+      skills: ["skills/seo-auditor.md"]
       prompt: >-
         Facts (deterministic, already computed by the workflow):
-        GEO ${{ tasks.geo_score.output }} · SEO ${{ tasks.seo_score.output }}.
-        Using the scoring rules and severity vocabulary above, write a
-        3-sentence verdict: the single biggest gap (with its severity
-        class), the quickest win, and one structural recommendation.
-        Plain prose, no headings.
-      max_tokens: 300
+        GEO ${{ with.geo }} · SEO ${{ with.seo }}.
+        Using the scoring rules and severity vocabulary from your skill,
+        write a 3-sentence verdict: the single biggest gap (with its
+        severity class), the quickest win, and one structural
+        recommendation. Plain prose, no headings.
+      max_turns: 1
+      max_tokens_total: 800
 
   # ── The report — one HTML artifact, receipts inline ────────────────
   report:
-    depends_on: [verdict, scorecard, geo_score, seo_score]
+    with:
+      verdict: ${{ tasks.verdict.output }}
+      geo_score: ${{ tasks.geo_score.output }}
+      seo_score: ${{ tasks.seo_score.output }}
+    after:
+      scorecard: succeeded
     invoke:
       tool: "nika:write"
       args:
@@ -191,15 +201,16 @@ tasks:
           <p><code>${{ vars.url }}</code></p>
           <img src="scorecard.svg" alt="Scorecard: GEO readiness and SEO hygiene">
           <h2>Verdict</h2>
-          <p>${{ tasks.verdict.output }}</p>
+          <p>${{ with.verdict }}</p>
           <h2>Facts</h2>
-          <pre>GEO ${{ tasks.geo_score.output }}
-          SEO ${{ tasks.seo_score.output }}</pre>
+          <pre>GEO ${{ with.geo_score }}
+          SEO ${{ with.seo_score }}</pre>
           <p><small>Generated by <a href="https://nika.sh">nika</a> — the run's
           trace chain is the receipt (<code>nika trace verify</code>).</small></p>
 
   done:
-    depends_on: [report]
+    after:
+      report: succeeded
     invoke:
       tool: "nika:log"
       args: { message: "audit complete → out/report.html · out/scorecard.svg" }

@@ -1,3 +1,10 @@
+---
+name: seo-auditor
+description: >-
+  Scoring rules + severity vocabulary for the site-audit verdict · injected
+  as a first-class agent skill (compose-time resolve · no fs.read grant).
+---
+
 # SEO Auditor Skill
 
 You are an expert technical SEO auditor. Analyze crawl data with professional precision.
