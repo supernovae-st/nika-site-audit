@@ -16,5 +16,5 @@
     "with_description": 8,
     "with_title": 8
   },
-  "verdict": "mock(echo) · Facts (deterministic, already computed by the workflow): GEO {\"ai_crawlers_addressed\":true,\"geo_points\":100,\"has_llmstxt\":true,\"has_robots\":true} · SEO {\"broken\":0,\"health\":100,\"long_titles\":0,\"pages_sampled\":8,\"seo_points\":100,\"sitemap_urls\":48,\"thin\":0,\"with_description\":8,\"with_title\":8}. Using the scoring rules and severity vocabulary above, write a 3-sentence verdict: the single biggest gap (with its severity class), the quickest win, and one structural recommendation. Plain prose, no headings."
+  "verdict": "mock(echo) · Facts (deterministic, already computed by the workflow): GEO {\"ai_crawlers_addressed\":true,\"geo_points\":100,\"has_llmstxt\":true,\"has_robots\":true} · SEO {\"broken\":0,\"health\":100,\"long_titles\":0,\"pages_sampled\":8,\"seo_points\":100,\"sitemap_urls\":48,\"thin\":0,\"with_description\":8,\"with_title\":8}. Using the scoring rules and severity vocabulary from your skill, write a 3-sentence verdict: the single biggest gap (with its severity class), the quickest win, and one structural recommendation. Plain prose, no headings."
 }
