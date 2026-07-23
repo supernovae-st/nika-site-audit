@@ -97,6 +97,12 @@ cost that surprises you. `nika check` catches those statically, and the
 The model gets exactly one job: narrate the verdict from scores computed
 deterministically.
 
+This repo runs under the same contract discipline it demonstrates.
+Every push and PR re-audits `site-audit.nika.yaml` with the first-party
+[`nika-action`](https://github.com/supernovae-st/nika-action), offline,
+against the committed golden: zero secrets, one SHA-pinned checkout
+step, no user-controlled string ever reaching a shell.
+
 ## The brouillon-era legacy showcase
 
 `legacy/site-audit-v10.nika.yaml` preserves the original 1072-line pipeline
