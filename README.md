@@ -80,9 +80,9 @@ host. Widen it when you change `vars.url`; everything else stays default-deny.
 
 | Wave | Tasks | What happens |
 |---|---|---|
-| 1 | `robots` `llmstxt` `sitemap` `crawl` `rubric` | GEO discovery in parallel: robots.txt, llms.txt, sitemap.xml, plus a bounded same-origin crawl (8 pages, robots respected). A missing file is a finding, not a crash |
+| 1 | `robots` `llmstxt` `sitemap` `crawl` | GEO discovery in parallel: robots.txt, llms.txt, sitemap.xml, plus a bounded same-origin crawl (8 pages, robots respected). A missing file is a finding, not a crash |
 | 2 | `geo_score` `seo_score` | deterministic scoring in jq: AI-crawler access, llms.txt presence, titles, canonicals, status codes |
-| 3 | `scorecard` `verdict` | a chart artifact from the scores, and the one LLM call: the narrated verdict, grounded in the rubric |
+| 3 | `scorecard` `verdict` | a chart artifact from the scores, and the one LLM call: the narrated verdict, grounded in the rubric skill |
 | 4-5 | `report` `done` | everything folds into `out/report.html` + `out/scorecard.svg` |
 
 Every run writes a hash-chained trace. `nika trace verify` exits 0 or names
@@ -128,7 +128,7 @@ machine-verified [timeline](https://nika.sh/timeline).
 
 | File | What it is |
 |---|---|
-| `site-audit.nika.yaml` | the v1 workflow: 11 tasks, declared permits, offline by default |
+| `site-audit.nika.yaml` | the v1 workflow: 10 tasks, declared permits, offline by default |
 | `site-audit.nika.yaml.golden.json` | the committed golden: `nika test` compares typed outputs against it |
 | `skills/` | the audit rubric the verdict is grounded in |
 | `legacy/` | the brouillon-era showcase (April 2026), read-only |
