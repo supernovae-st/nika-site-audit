@@ -1,26 +1,13 @@
 [project]
 name = "nika-site-audit"
-description = "Full site audit workflow — crawl, enrich, analyze, report"
+description = "Full site audit workflow — crawl bounded, score deterministically, one narrated verdict"
 
 # Provider/model live IN the workflow envelope on the v1 surface
-# (`model: mock/echo` offline default · --model overrides at run) —
-# a config-level default here belonged to the legacy dialect.
-
-[tools]
-allow_exec = true
-allow_network = true
-
-[policy]
-allow_exec = true
-allow_network = true
-fetch_allow = [
-  "api.elevenlabs.io",
-  "generativelanguage.googleapis.com",
-]
-fetch_robots_bypass = [
-  "api.elevenlabs.io",
-  "generativelanguage.googleapis.com",
-]
+# (`model: mock/echo` offline default · --model overrides at run).
+# Permissions live IN the workflow too (`permits:` — default-deny once
+# declared): the legacy config-level allow_exec/allow_network +
+# fetch_robots_bypass rows contradicted the file's own boundary and
+# died with the dialect that read them.
 
 [artifacts]
 dir = "./artifacts"

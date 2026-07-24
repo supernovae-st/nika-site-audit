@@ -24,7 +24,7 @@ and its showcase examples ship inside the engine (`nika examples`).
   consolidated (one data language — several former builtins such as
   `nika:map` / `nika:filter` / `nika:enrich` are now `nika:jq` recipes per
   the spec's builtins doc). A modernization pass to the v0.1 surface is
-  queued before the engine tags. Do NOT treat builtins used here as
+  landed with the v1 rewrite (2026-07). Do NOT treat builtins used here as
   canonical — `canon.yaml` in nika-spec is the truth.
 - The engine ships real releases (v0.105.0 as of 2026-07-20 — brew
   `supernovae-st/tap/nika` · the live number is `nika --version`, never
