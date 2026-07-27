@@ -74,7 +74,7 @@ nika run site-audit.nika.yaml \
 ```
 
 Note the `permits:` block in the workflow pins the network to the audited
-host. Widen it when you change `vars.url`; everything else stays default-deny.
+host. Widen it when you change `inputs.url`; everything else stays default-deny.
 
 ## What it does
 

@@ -19,7 +19,7 @@ workflow:
 
 model: mock/echo # offline default — override live: --model anthropic/claude-sonnet-4-6 (or any provider/model)
 
-vars:
+inputs:
   url:
     type: string
     default: "https://qrcode-ai.com"
@@ -28,7 +28,7 @@ vars:
 permits:
   exec: false
   net:
-    http: ["qrcode-ai.com"] # widen with the audited host when overriding vars.url
+    http: ["qrcode-ai.com"] # widen with the audited host when overriding inputs.url
   fs:
     write: ["out/**"]
   tools:
@@ -45,21 +45,21 @@ tasks:
   robots:
     invoke:
       tool: "nika:fetch"
-      args: { url: "${{ vars.url }}/robots.txt", mode: text }
+      args: { url: "${{ inputs.url }}/robots.txt", mode: text }
     on_error:
       recover: "" # a missing robots.txt is a FINDING, not a crash
 
   llmstxt:
     invoke:
       tool: "nika:fetch"
-      args: { url: "${{ vars.url }}/llms.txt", mode: text }
+      args: { url: "${{ inputs.url }}/llms.txt", mode: text }
     on_error:
       recover: "" # absence recorded · scored below
 
   sitemap:
     invoke:
       tool: "nika:fetch"
-      args: { url: "${{ vars.url }}/sitemap.xml", mode: sitemap }
+      args: { url: "${{ inputs.url }}/sitemap.xml", mode: sitemap }
     retry: { max_attempts: 2, backoff_ms: 2000 }
     on_error:
       recover: "[]" # spider-mode fallback: the crawl still samples
@@ -69,7 +69,7 @@ tasks:
     invoke:
       tool: "nika:fetch"
       args:
-        url: "${{ vars.url }}"
+        url: "${{ inputs.url }}"
         traverse: { max_pages: 8, respect_robots: true }
     retry: { max_attempts: 2, backoff_ms: 2000 }
 
@@ -187,7 +187,7 @@ tasks:
       geo_score: ${{ tasks.geo_score.output }}
       seo_score: ${{ tasks.seo_score.output }}
     after:
-      scorecard: succeeded
+      scorecard: success
     invoke:
       tool: "nika:write"
       args:
@@ -195,10 +195,10 @@ tasks:
         content: |
           <!doctype html>
           <meta charset="utf-8">
-          <title>Site audit — ${{ vars.url }}</title>
+          <title>Site audit — ${{ inputs.url }}</title>
           <style>body{font:16px/1.5 system-ui;max-width:44rem;margin:3rem auto;padding:0 1rem}img{max-width:100%}code{background:#eee;padding:.1em .3em;border-radius:3px}</style>
           <h1>Site audit</h1>
-          <p><code>${{ vars.url }}</code></p>
+          <p><code>${{ inputs.url }}</code></p>
           <img src="scorecard.svg" alt="Scorecard: GEO readiness and SEO hygiene">
           <h2>Verdict</h2>
           <p>${{ with.verdict }}</p>
@@ -210,7 +210,7 @@ tasks:
 
   done:
     after:
-      report: succeeded
+      report: success
     invoke:
       tool: "nika:log"
       args: { message: "audit complete → out/report.html · out/scorecard.svg" }
