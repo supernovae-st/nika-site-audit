@@ -32,7 +32,7 @@ and its showcase examples ship inside the engine (`nika examples`).
   2026-07-10, checks clean and runs end-to-end on the released binary
   (check · golden `nika test` · live run · `nika trace verify`). The
   brouillon-era (April 2026) 1072-line pipeline is preserved at
-  `legacy/site-audit-v10.nika.yaml` (pre-v1 dialect · read-only
+  git history (`git show 1f77462:legacy/site-audit-v10.nika.yaml` · pre-v1 dialect · read-only
   reference · does not parse on current engines — by design).
 
 ## Editing rules

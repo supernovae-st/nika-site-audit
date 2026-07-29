@@ -106,7 +106,7 @@ step, no user-controlled string ever reaching a shell.
 
 ## The brouillon-era legacy showcase
 
-`legacy/site-audit-v10.nika.yaml` preserves the original 1072-line pipeline
+the original 1072-line brouillon-era pipeline lives in git (`git show 1f77462:legacy/site-audit-v10.nika.yaml`)
 (April 2026, the brouillon era — the draft engine the Diamond rewrite
 retired): 50 tasks, 22 layers, locale detection across 38 locales, an
 interactive 10-tab dashboard, AI-generated imagery and a podcast narration.
@@ -131,8 +131,6 @@ machine-verified [timeline](https://nika.sh/timeline).
 | `site-audit.nika.yaml` | the v1 workflow: 10 tasks, declared permits, offline by default |
 | `site-audit.nika.yaml.golden.json` | the committed golden: `nika test` compares typed outputs against it |
 | `skills/` | the audit rubric the verdict is grounded in |
-| `legacy/` | the brouillon-era showcase (April 2026), read-only |
-| `prototypes/` | exploration, not the product |
 
 <p align="center">
   <sub>Docs: <a href="https://docs.nika.sh">docs.nika.sh</a> · Engine (AGPL-3.0): <a href="https://github.com/supernovae-st/nika">nika</a> · Templates: <a href="https://github.com/supernovae-st/nika-starter">nika-starter</a> · <a href="https://github.com/supernovae-st/nika-actions-starter">nika-actions-starter</a></sub>

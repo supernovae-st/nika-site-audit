@@ -10,7 +10,7 @@
 # `nika check site-audit.nika.yaml` prints the plan, the cost ceiling and
 # the permits boundary before a single request leaves.
 #
-# The brouillon-era (April 2026) 1072-line pipeline lives at legacy/site-audit-v10.nika.yaml
+# The brouillon-era (April 2026) 1072-line pipeline lives in git history (1f77462:legacy/)
 # (read-only reference — pre-v1 surface, does not parse on current engines).
 nika: v1
 workflow:
