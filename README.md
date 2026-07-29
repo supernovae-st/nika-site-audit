@@ -124,6 +124,8 @@ from it; the current language is the [public spec](https://github.com/supernovae
 The full era model — exploration · brouillon · diamond — is the
 machine-verified [timeline](https://nika.sh/timeline).
 
+![nika check audits the workflow (plan, permits, cost, secrets, types, the lethal-trifecta gate), then nika run executes it locally and seals the hash-chained trace — the audit-then-run story](https://raw.githubusercontent.com/supernovae-st/nika/main/media/nika-hero.gif)
+
 <!-- city:map -->
 ## The city · where this repo sits
 
