@@ -143,6 +143,8 @@ machine-verified [timeline](https://nika.sh/timeline).
 
 **This building** · THE WITNESS · one real job (audit a website), run and re-proven on the released binary.
 
+**Root** · neither · this building is written IN the language it witnesses. It consumes the grammar from nika-spec and runs on the released engine · nothing authoritative is typed here.
+
 **Consumes** · the released engine (golden output pinned).
 
 **Serves** · proof that a real workflow holds outside the lab. Destiny (ruled 2026-07-29): the registry's first flagship artifact once the market absorbs it — this repo then archives.
