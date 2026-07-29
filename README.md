@@ -124,6 +124,33 @@ from it; the current language is the [public spec](https://github.com/supernovae
 The full era model — exploration · brouillon · diamond — is the
 machine-verified [timeline](https://nika.sh/timeline).
 
+<!-- city:map -->
+## The city · where this repo sits
+
+```
+📜 nika-spec ──── the civil code · the law tables, the corpus, the exam
+    │ sync-pack: byte-gated mirror        │ projectors: drift-gated
+    ▼                                     ▼
+⚙️ nika ───────── the engine + the catalog (the yellow pages)
+    │ the release train                  🖥️ nika.sh · 📖 nika-docs
+    ▼                                     the showroom · the manual
+📦 homebrew-tap · npm · Docker ── the docks
+🔌 nika-client · 🎨 nika-vscode · 🤖 nika-agents ── the doors
+🏪 nika-registry ── the market · 🔍 nika-site-audit ── the witness   ◀── you are here
+```
+
+**This building** · THE WITNESS · one real job (audit a website), run and re-proven on the released binary.
+
+**Consumes** · the released engine (golden output pinned).
+
+**Serves** · proof that a real workflow holds outside the lab. Destiny (ruled 2026-07-29): the registry's first flagship artifact once the market absorbs it — this repo then archives.
+
+**Truth lives** · the golden JSON is the pin · the workflow is the product.
+
+Every fact has one home · everything else is a gated projection.
+The living map: [nika.sh/map](https://nika.sh/map).
+<!-- /city:map -->
+
 ## Files
 
 | File | What it is |
